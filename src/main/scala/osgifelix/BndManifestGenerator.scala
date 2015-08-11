@@ -2,27 +2,26 @@ package osgifelix
 
 import java.io.File
 import java.text.SimpleDateFormat
-import java.util.{Properties, Date, TimeZone}
 import java.util.jar.Attributes.Name
 import java.util.jar.Manifest
+import java.util.{Date, Properties, TimeZone}
 
-import aQute.bnd.osgi.{Builder, Analyzer, Jar}
+import aQute.bnd.osgi.{Analyzer, Builder, Jar}
 import aQute.bnd.version.Version
 import sbt._
-import scala.collection.convert.WrapAsJava._
 
-import scalaz.ReaderT
-import scalaz.Monad
+import scala.collection.convert.WrapAsJava._
 import scalaz.Kleisli.kleisli
+import scalaz.{Monad, ReaderT}
 import scalaz.syntax.monad._
 
-trait BundleProgress {
-  def info[F[_]](msg: String): F[Unit]
+trait BundleProgress[F[_]] {
+  def info(msg: String): F[Unit]
 }
 
 
 object BndManifestGenerator {
-  val stampStr = {
+  def genQualifier = {
     val format = "yyyyMMddHHmm"
     val now = System.currentTimeMillis()
     val tz = TimeZone.getTimeZone("UTC")
@@ -31,49 +30,45 @@ object BndManifestGenerator {
     sdf.format(new Date(now))
   }
 
-  def addQualifier(version: Version) = new Version(version.getMajor, version.getMinor, version.getMicro, stampStr)
-
-  def calcVersion(inpVersion: String, revision: Option[String]): Version = {
-    val version = if (!inpVersion.isEmpty)
-      new Version(inpVersion)
-    else revision.fold(new Version())(rev ⇒ VersionNumber(rev) match {
-      case VersionNumber((nums, _, _)) ⇒
-        new Version(nums.slice(0, 3).padTo(3, 0).mkString(".") + ".SNAPSHOT")
-    })
-    version.getQualifier match {
-      case null | "SNAPSHOT" ⇒ addQualifier(version)
-      case _ ⇒ version
-    }
+  def parseDetails(jf: File): (Jar, Option[(String, Version)]) = {
+    val jar = new Jar(jf)
+    val verName = Option(jar.getBsn).map(sn => (sn, new Version(jar.getVersion)))
+    (jar, verName)
   }
 
-  def changeAttribute(name: String, value: String)(man: Manifest): Boolean = {
-    val mainAttributes = man.getMainAttributes
-    val oldVal = mainAttributes.getValue(name)
-    val changed = oldVal != value
-    if (changed) mainAttributes.putValue(name, value)
-    changed
-  }
+  def buildJars[F[_] : Monad](jars: Seq[BundleInstructions], binDir: File, srcsDir: File): ReaderT[F, BundleProgress[F], Iterable[ProcessedJar]] = kleisli { (logger: BundleProgress[F]) =>
 
-  def setupAnalyzer(analyzer: Analyzer, prevJars: Iterable[Jar], insts: ManifestInstructions, name: String, version: Version): Unit = {
-    analyzer.setProperty("Require-Capability", "osgi.ee; filter:=\"(&(osgi.ee=JavaSE)(version=1.7))\"");
-    analyzer.setClasspath(prevJars.toArray)
-    analyzer.setImportPackage(insts.imports)
-    analyzer.setExportPackage(insts.exports.replaceAll("VERSION", version.getWithoutQualifier.toString))
-    analyzer.setBundleSymbolicName(name)
-    if (insts.privates != "") analyzer.setPrivatePackage(insts.privates)
-    insts.fragment.foreach {
-      analyzer.set("Fragment-Host", _)
+    val stampStr = genQualifier
+
+    def addQualifier(version: Version) = new Version(version.getMajor, version.getMinor, version.getMicro, stampStr)
+
+    def changeAttribute(name: String, value: String)(man: Manifest): Boolean = {
+      val mainAttributes = man.getMainAttributes
+      val oldVal = mainAttributes.getValue(name)
+      val changed = oldVal != value
+      if (changed) mainAttributes.putValue(name, value)
+      changed
     }
-    analyzer.setBundleVersion(version)
-    if (!insts.extraProperties.isEmpty) {
-      val props = new Properties()
-      props.putAll(insts.extraProperties)
-      analyzer.setProperties(props)
+
+    def setupAnalyzer(analyzer: Analyzer, prevJars: Iterable[Jar], insts: ManifestInstructions, name: String, version: Version): Unit = {
+      analyzer.setProperty("Require-Capability", "osgi.ee; filter:=\"(&(osgi.ee=JavaSE)(version=1.7))\"");
+      analyzer.setClasspath(prevJars.toArray)
+      analyzer.setImportPackage(insts.imports)
+      analyzer.setExportPackage(insts.exports.replaceAll("VERSION", version.getWithoutQualifier.toString))
+      analyzer.setBundleSymbolicName(name)
+      if (insts.privates != "") analyzer.setPrivatePackage(insts.privates)
+      insts.fragment.foreach {
+        analyzer.set("Fragment-Host", _)
+      }
+      analyzer.setBundleVersion(version)
+      if (insts.extraProperties.nonEmpty) {
+        val props = new Properties()
+        props.putAll(insts.extraProperties)
+        analyzer.setProperties(props)
+      }
     }
-  }
 
 
-  def buildJars[F[_] : Monad](jars: Seq[BundleInstructions], prefix: String, binDir: File, srcsDir: File): ReaderT[F, BundleProgress, Iterable[ProcessedJar]] = kleisli { (logger: BundleProgress) =>
     def removeSigningIfNeeded(jar: Jar) {
       if (jar.getResource("META-INF/BCKEY.SF") != null) {
         jar.getManifest.getEntries.clear()
@@ -83,22 +78,22 @@ object BndManifestGenerator {
       }
     }
 
-    def buildJar(jars: Iterable[File], insts: ManifestInstructions, previousJars: Iterable[Jar]): ProcessedJar = {
-      val version = calcVersion(insts.version, None)
-      val jarName = s"${insts.symbolicName}_${version}.jar"
-      logger.info("Building new jar " + jarName)
+    def buildJar(jars: Iterable[File], bsn: String, ver: Version, insts: ManifestInstructions, previousJars: Iterable[Jar]): ProcessedJar = {
+      val version = addQualifier(ver)
+      val jarName = s"${bsn}_$version}.jar"
+      logger.info(s"Building $jarName")
       val analyzer = new Builder
-      setupAnalyzer(analyzer, previousJars ++ jars.map(new Jar(_)), insts, insts.symbolicName, version)
+      setupAnalyzer(analyzer, previousJars ++ jars.map(new Jar(_)), insts, bsn, version)
       val jar = analyzer.build()
-      jar.write(new File(binDir, jarName))
-      ProcessedJar(Some(insts.symbolicName, version.toString), jar)
+      val jf = new File(binDir, jarName)
+      jar.write(jf)
+      ProcessedJar(bsn, version, jar, jf)
     }
 
-    def rewriteManifest(jar: Jar, prevJars: Iterable[Jar], insts: ManifestInstructions, name: String, jarVersion: Option[String]): ProcessedJar = {
-      val version = calcVersion(insts.version, jarVersion)
-      val symbName = if (insts.symbolicName == "") s"$prefix${name}" else insts.symbolicName
-      val jarName = s"${symbName}_${version}.jar"
-      logger.info("Creating bundle for " + jarName)
+    def rewriteManifest(jar: Jar, bsn: String, ver: Version, prevJars: Iterable[Jar], insts: ManifestInstructions): ProcessedJar = {
+      val version = addQualifier(ver)
+      val jarName = s"${jar.getName}.jar"
+      logger.info(s"Rewriting $jarName (${bsn}_$version)")
       val analyzer = new Analyzer
       val man = jar.getManifest
       if (man != null) {
@@ -108,18 +103,19 @@ object BndManifestGenerator {
         removeSigningIfNeeded(jar)
       }
       analyzer.setJar(jar)
-      setupAnalyzer(analyzer, prevJars, insts, symbName, version)
+      setupAnalyzer(analyzer, prevJars, insts, bsn, version)
       val manifest = analyzer.calcManifest()
       jar.setManifest(manifest)
-      jar.write(new File(binDir, jarName))
-      ProcessedJar(Some(symbName, version.toString), jar)
+      val jf = new File(binDir, jarName)
+      jar.write(jf)
+      ProcessedJar(bsn, version, jar, jf)
     }
 
     def getDetails(jar: Jar) = {
       val bsn = jar.getBsn
-      val version = jar.getVersion
-      val jarName = s"${bsn}_${new Version(version)}.jar"
-      ((bsn, version), binDir / jarName)
+      val version = new Version(jar.getVersion)
+      val jarName = s"${bsn}_$version.jar"
+      (bsn, version, binDir / jarName)
     }
 
     def writeExistingBundle(jar: Jar, f: Manifest ⇒ Boolean) = {
@@ -128,29 +124,25 @@ object BndManifestGenerator {
         changeAttribute("Bundle-Version", addQualifier(new Version(jar.getVersion)).toString)(man)
       }
       removeSigningIfNeeded(jar)
-      val (details, jarFile) = getDetails(jar)
+      val (bsn, version, jarFile) = getDetails(jar)
       jar.write(jarFile)
-      ProcessedJar(Some(details), jar)
+      ProcessedJar(bsn, version, jar, jarFile)
     }
 
     val allProcessedJars = jars.foldLeft(Iterable.empty[ProcessedJar]) { (prevBundles, nextJar) ⇒
       val prevJars = prevBundles.map(_.jar)
 
       val bundle = nextJar match {
-        case CreateBundle(jars, _, insts) => buildJar(jars, insts, prevJars)
-        case RewriteManifest(jar, _, name, jarVersion, insts) => rewriteManifest(new Jar(jar), prevJars, insts, name, jarVersion)
+        case CreateBundle(jars, bsn, ver, _, insts) => buildJar(jars, bsn, ver, insts, prevJars)
+        case RewriteManifest(jar, bsn, ver, _, insts) => rewriteManifest(jar, bsn, ver, prevJars, insts)
         case EditManifest(jar, _, editor) => writeExistingBundle(new Jar(jar), editor)
-        case CopyBundle(jf, _) =>
-          val existingJar = new Jar(jf)
-          val (details, jarFile) = getDetails(existingJar)
-          if (jf.isDirectory) IO.copyDirectory(jf, new File(binDir, jf.getName))
-          else IO.copyFile(jf, jarFile, true)
-          ProcessedJar(Some(details), existingJar)
+        case CopyBundle(jf, existingJar, _) =>
+          val (bsn, version, jarFile) = getDetails(existingJar)
+          logger.info(s"Copying ${jarFile.getName} (${bsn}_$version)")
+          IO.copyFile(jf, jarFile, true)
+          ProcessedJar(bsn, version, existingJar, jarFile)
       }
-      for {
-        (symbName, symbVersion) ← bundle.bundleId
-        sourceJar ← nextJar.sources.headOption
-      } yield {
+      nextJar.sources.headOption.foreach { sourceJar =>
         val destName = new File(srcsDir, sourceJar.getName)
         val sj = new Jar(sourceJar)
         val sa = new Analyzer()
@@ -158,9 +150,11 @@ object BndManifestGenerator {
         if (!sname.isDefined) {
           logger.info("Creating source bundle for " + sourceJar.getName)
           sa.setJar(sj)
+          val symbName = bundle.bsn
+          val version = bundle.version
           sa.setBundleSymbolicName(symbName + ".source")
-          sa.setBundleVersion(symbVersion)
-          sa.setProperty("Eclipse-SourceBundle", s"""$symbName;version="$symbVersion";roots:="."""")
+          sa.setBundleVersion(version)
+          sa.setProperty("Eclipse-SourceBundle", s"""$symbName;version="$version";roots:="."""")
           sa.setExportPackage("!*")
           val srcMan = sa.calcManifest()
           srcMan.getMainAttributes.remove(new Name("Export-Package"))
