@@ -1,7 +1,9 @@
-package osgifelix
+package osgifelix.sbtutils
 
 import aQute.bnd.version.Version
-import sbt.{ModuleReport, Dag, ConfigurationReport, VersionNumber}
+import osgifelix.BundleInstructions
+import sbt.{ConfigurationReport, Dag, ModuleReport, VersionNumber}
+import argonaut._
 
 /**
  * Created by jolz on 11/08/15.
@@ -19,4 +21,6 @@ object SbtUtils {
     val ordered = Dag.topologicalSort(modList.map(_.module))(m ⇒ modMap.get(m).map(_.callers.map(_.caller)).getOrElse(Seq.empty)).reverse
     ordered.flatMap(modMap.get)
   }
+
+
 }

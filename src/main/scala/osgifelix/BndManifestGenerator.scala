@@ -8,6 +8,8 @@ import java.util.{Date, Properties, TimeZone}
 
 import aQute.bnd.osgi.{Analyzer, Builder, Jar}
 import aQute.bnd.version.Version
+import argonaut._
+import argonaut.Argonaut._
 import sbt._
 
 import scala.collection.convert.WrapAsJava._
@@ -21,6 +23,28 @@ trait BundleProgress[F[_]] {
 
 
 object BndManifestGenerator {
+
+  implicit val fileEncode = EncodeJson[File](_.getAbsolutePath.asJson)
+  implicit val jarEncode = EncodeJson[Jar](_.getName.asJson)
+  implicit val verEncode = EncodeJson[Version](_.toString.asJson)
+  implicit val modIdEncode = EncodeJson[ModuleID] {
+  mid => s"${mid.organization} % ${mid.name} % ${mid.revision}".asJson
+  }
+  implicit val instEncode = EncodeJson.derive[ManifestInstructions]
+  implicit val rewriteEncode = EncodeJson.derive[RewriteManifest]
+  implicit val createEncode = EncodeJson.derive[CreateBundle]
+  implicit val copyEncode = EncodeJson.derive[UseBundle]
+  implicit val bundleEncode = EncodeJson[BundleInstructions] {
+      case a: RewriteManifest => jSingleObject("rewrite", a.asJson)
+      case a: CreateBundle => jSingleObject("create", a.asJson)
+      case a: UseBundle => jSingleObject("use", a.asJson)
+      case a: EditManifest => jSingleObject("editmanifest", a.jar.asJson)
+  }
+
+  def serialize(instructions: Seq[BundleInstructions]): String = {
+    instructions.asJson.nospaces
+  }
+
   def genQualifier = {
     val format = "yyyyMMddHHmm"
     val now = System.currentTimeMillis()
@@ -30,13 +54,14 @@ object BndManifestGenerator {
     sdf.format(new Date(now))
   }
 
+
   def parseDetails(jf: File): (Jar, Option[(String, Version)]) = {
     val jar = new Jar(jf)
     val verName = Option(jar.getBsn).map(sn => (sn, new Version(jar.getVersion)))
     (jar, verName)
   }
 
-  def buildJars[F[_] : Monad](jars: Seq[BundleInstructions], binDir: File, srcsDir: File): ReaderT[F, BundleProgress[F], Iterable[ProcessedJar]] = kleisli { (logger: BundleProgress[F]) =>
+  def buildJars[F[_] : Monad](jars: Seq[BundleInstructions], binDir: File): ReaderT[F, BundleProgress[F], Iterable[ProcessedJar]] = kleisli { (logger: BundleProgress[F]) =>
 
     val stampStr = genQualifier
 
@@ -78,7 +103,7 @@ object BndManifestGenerator {
       }
     }
 
-    def buildJar(jars: Iterable[File], bsn: String, ver: Version, insts: ManifestInstructions, previousJars: Iterable[Jar]): ProcessedJar = {
+    def buildJar(modIds: Seq[ModuleID], jars: Iterable[File], bsn: String, ver: Version, insts: ManifestInstructions, previousJars: Iterable[Jar]): ProcessedJar = {
       val version = addQualifier(ver)
       val jarName = s"${bsn}_$version}.jar"
       logger.info(s"Building $jarName")
@@ -87,10 +112,10 @@ object BndManifestGenerator {
       val jar = analyzer.build()
       val jf = new File(binDir, jarName)
       jar.write(jf)
-      ProcessedJar(bsn, version, jar, jf)
+      ProcessedJar(modIds, bsn, version, jar, jf)
     }
 
-    def rewriteManifest(jar: Jar, bsn: String, ver: Version, prevJars: Iterable[Jar], insts: ManifestInstructions): ProcessedJar = {
+    def rewriteManifest(modId: Option[ModuleID], jar: Jar, bsn: String, ver: Version, prevJars: Iterable[Jar], insts: ManifestInstructions): ProcessedJar = {
       val version = addQualifier(ver)
       val jarName = s"${jar.getName}.jar"
       logger.info(s"Rewriting $jarName (${bsn}_$version)")
@@ -108,60 +133,40 @@ object BndManifestGenerator {
       jar.setManifest(manifest)
       val jf = new File(binDir, jarName)
       jar.write(jf)
-      ProcessedJar(bsn, version, jar, jf)
+      ProcessedJar(modId.toSeq, bsn, version, jar, jf)
     }
 
     def getDetails(jar: Jar) = {
       val bsn = jar.getBsn
       val version = new Version(jar.getVersion)
-      val jarName = s"${bsn}_$version.jar"
-      (bsn, version, binDir / jarName)
+      (bsn, version)
     }
 
-    def writeExistingBundle(jar: Jar, f: Manifest ⇒ Boolean) = {
+    def writeExistingBundle(modId: Option[ModuleID], jf: File, f: Manifest ⇒ Boolean) = {
+      val jar = new Jar(jf)
       val man = jar.getManifest
-      if (f(man)) {
+      val (bsn, version) = getDetails(jar)
+      val jarFile = if (f(man)) {
         changeAttribute("Bundle-Version", addQualifier(new Version(jar.getVersion)).toString)(man)
-      }
-      removeSigningIfNeeded(jar)
-      val (bsn, version, jarFile) = getDetails(jar)
-      jar.write(jarFile)
-      ProcessedJar(bsn, version, jar, jarFile)
+        removeSigningIfNeeded(jar)
+        val jarFile = binDir / jar.getName
+        jar.write(jarFile)
+        jarFile
+      } else jf
+      ProcessedJar(modId.toSeq, bsn, version, jar, jarFile)
     }
 
     val allProcessedJars = jars.foldLeft(Iterable.empty[ProcessedJar]) { (prevBundles, nextJar) ⇒
       val prevJars = prevBundles.map(_.jar)
 
       val bundle = nextJar match {
-        case CreateBundle(jars, bsn, ver, _, insts) => buildJar(jars, bsn, ver, insts, prevJars)
-        case RewriteManifest(jar, bsn, ver, _, insts) => rewriteManifest(jar, bsn, ver, prevJars, insts)
-        case EditManifest(jar, _, editor) => writeExistingBundle(new Jar(jar), editor)
-        case CopyBundle(jf, existingJar, _) =>
-          val (bsn, version, jarFile) = getDetails(existingJar)
-          logger.info(s"Copying ${jarFile.getName} (${bsn}_$version)")
-          IO.copyFile(jf, jarFile, true)
-          ProcessedJar(bsn, version, existingJar, jarFile)
-      }
-      nextJar.sources.headOption.foreach { sourceJar =>
-        val destName = new File(srcsDir, sourceJar.getName)
-        val sj = new Jar(sourceJar)
-        val sa = new Analyzer()
-        val sname = Option(sj.getBsn)
-        if (!sname.isDefined) {
-          logger.info("Creating source bundle for " + sourceJar.getName)
-          sa.setJar(sj)
-          val symbName = bundle.bsn
-          val version = bundle.version
-          sa.setBundleSymbolicName(symbName + ".source")
-          sa.setBundleVersion(version)
-          sa.setProperty("Eclipse-SourceBundle", s"""$symbName;version="$version";roots:="."""")
-          sa.setExportPackage("!*")
-          val srcMan = sa.calcManifest()
-          srcMan.getMainAttributes.remove(new Name("Export-Package"))
-          srcMan.getMainAttributes.remove(new Name("Private-Package"))
-          sj.setManifest(srcMan)
-          sj.write(destName)
-        } else IO.copyFile(sourceJar, destName, true)
+        case CreateBundle(modIds, jars, bsn, ver, insts) => buildJar(modIds, jars, bsn, ver, insts, prevJars)
+        case RewriteManifest(modId, jar, bsn, ver, insts) => rewriteManifest(modId, jar, bsn, ver, prevJars, insts)
+        case EditManifest(modId, jar, editor) => writeExistingBundle(modId, jar, editor)
+        case UseBundle(modId, jf, existingJar) =>
+          val (bsn, version) = getDetails(existingJar)
+          logger.info(s"Using ${jf.getName} (${bsn}_$version)")
+          ProcessedJar(modId.toSeq, bsn, version, existingJar, jf)
       }
       Some(bundle) ++ prevBundles
     }
