@@ -34,11 +34,12 @@ object BndManifestGenerator {
   implicit val rewriteEncode = EncodeJson.derive[RewriteManifest]
   implicit val createEncode = EncodeJson.derive[CreateBundle]
   implicit val copyEncode = EncodeJson.derive[UseBundle]
+  implicit val manifestEncode = EncodeJson.derive[ManifestOnly]
   implicit val bundleEncode = EncodeJson[BundleInstructions] {
       case a: RewriteManifest => jSingleObject("rewrite", a.asJson)
       case a: CreateBundle => jSingleObject("create", a.asJson)
       case a: UseBundle => jSingleObject("use", a.asJson)
-      case a: EditManifest => jSingleObject("editmanifest", a.jar.asJson)
+      case a: ManifestOnly => jSingleObject("manifest", a.asJson)
   }
 
   def serialize(instructions: Seq[BundleInstructions]): String = {
@@ -105,7 +106,7 @@ object BndManifestGenerator {
 
     def buildJar(modIds: Seq[ModuleID], jars: Iterable[File], bsn: String, ver: Version, insts: ManifestInstructions, previousJars: Iterable[Jar]): ProcessedJar = {
       val version = addQualifier(ver)
-      val jarName = s"${bsn}_$version}.jar"
+      val jarName = s"${bsn}_$version.jar"
       logger.info(s"Building $jarName")
       val analyzer = new Builder
       setupAnalyzer(analyzer, previousJars ++ jars.map(new Jar(_)), insts, bsn, version)
@@ -142,27 +143,26 @@ object BndManifestGenerator {
       (bsn, version)
     }
 
-    def writeExistingBundle(modId: Option[ModuleID], jf: File, f: Manifest ⇒ Boolean) = {
-      val jar = new Jar(jf)
-      val man = jar.getManifest
-      val (bsn, version) = getDetails(jar)
-      val jarFile = if (f(man)) {
-        changeAttribute("Bundle-Version", addQualifier(new Version(jar.getVersion)).toString)(man)
-        removeSigningIfNeeded(jar)
-        val jarFile = binDir / jar.getName
-        jar.write(jarFile)
-        jarFile
-      } else jf
-      ProcessedJar(modId.toSeq, bsn, version, jar, jarFile)
-    }
-
     val allProcessedJars = jars.foldLeft(Iterable.empty[ProcessedJar]) { (prevBundles, nextJar) ⇒
       val prevJars = prevBundles.map(_.jar)
 
       val bundle = nextJar match {
         case CreateBundle(modIds, jars, bsn, ver, insts) => buildJar(modIds, jars, bsn, ver, insts, prevJars)
         case RewriteManifest(modId, jar, bsn, ver, insts) => rewriteManifest(modId, jar, bsn, ver, prevJars, insts)
-        case EditManifest(modId, jar, editor) => writeExistingBundle(modId, jar, editor)
+        case ManifestOnly(modId, bsn, ver, headers) =>
+          val jar = new Jar(bsn)
+          val builder = new Builder()
+          builder.setJar(jar)
+          builder.setBundleSymbolicName(bsn)
+          val version = addQualifier(ver)
+          builder.setBundleVersion(version)
+          headers.foreach {
+            case (key,v) => builder.setProperty(key, v)
+          }
+          jar.setManifest(builder.calcManifest())
+          val file = binDir / s"${bsn}_$version.jar"
+          jar.write(file)
+          ProcessedJar(Seq.empty, bsn, version, jar, file)
         case UseBundle(modId, jf, existingJar) =>
           val (bsn, version) = getDetails(existingJar)
           logger.info(s"Using ${jf.getName} (${bsn}_$version)")

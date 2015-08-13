@@ -1,9 +1,7 @@
-package osgifelix.sbtutils
+package osgifelix
 
 import aQute.bnd.version.Version
-import osgifelix.BundleInstructions
 import sbt.{ConfigurationReport, Dag, ModuleReport, VersionNumber}
-import argonaut._
 
 /**
  * Created by jolz on 11/08/15.
