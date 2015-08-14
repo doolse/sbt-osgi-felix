@@ -1,11 +1,13 @@
 package osgifelix
 
 import java.io.{FileReader, FileWriter, File}
-import java.net.URI
+import java.net.{URL, URI}
+import java.util.jar.JarFile
 
-import org.apache.felix.bundlerepository.{Capability, Reason, Repository, RepositoryAdmin}
+import org.apache.felix.bundlerepository._
 import org.osgi.framework.{VersionRange, BundleContext}
 import org.osgi.util.tracker.ServiceTracker
+import sbt._
 
 import scalaz.\/
 import scalaz.syntax.either._
@@ -19,17 +21,20 @@ trait FelixRepoRunner {
 }
 
 object FelixRepositories {
-  def runRepoAdmin(bundles: Seq[File]): FelixRepoRunner = {
-    val config = BundleStartConfig(systemPackages = Seq("org.apache.felix.bundlerepository;version=2.1"), defaultStart = bundles.map(b => BundleLocation(b.toURI)))
+  def runRepoAdmin(bundles: Seq[File], storageDir: File): FelixRepoRunner = {
+    val config = BundleStartConfig(systemPackages = Seq("org.apache.felix.bundlerepository;version=2.1"), defaultStart = bundles.map(b => BundleLocation(b)))
     new FelixRepoRunner {
-      override def apply[A](f: (FelixRepositories) => A): A = FelixEmbedder.embed(config)(c => f(new FelixRepositories(c)))
+      override def apply[A](f: (FelixRepositories) => A): A = FelixEmbedder.embed(config, storageDir)(c => f(new FelixRepositories(c)))
     }
   }
 }
 
 sealed trait OsgiRequirement
+
 case class BundleRequirement(name: String, version: Option[VersionRange] = None) extends OsgiRequirement
+
 case class PackageRequirement(name: String, version: Option[VersionRange] = None) extends OsgiRequirement
+
 case class FragmentsRequirement(hostName: String) extends OsgiRequirement
 
 class FelixRepositories(bundleContext: BundleContext) {
@@ -57,9 +62,19 @@ class FelixRepositories(bundleContext: BundleContext) {
     }
   }
 
-  def createIndexedRepository(jarFiles: Seq[File]) = {
+  def createIndexedRepository(jarFiles: Seq[BundleLocation]) = {
     val helper = repoAdmin.getHelper
-    val resources = jarFiles.map(j => helper.createResource(j.toURI.toURL))
+    val resources = jarFiles.map { j =>
+      val file = j.file
+      if (file.isDirectory) {
+        val attr = Using.fileInputStream(file / JarFile.MANIFEST_NAME) { finp =>
+          new java.util.jar.Manifest(finp).getMainAttributes
+        }
+        val res = helper.createResource(attr)
+        res.getProperties.asInstanceOf[java.util.Map[String, String]].put(Resource.URI, file.toURI.toString)
+        res
+      } else helper.createResource(file.toURI.toURL)
+    }
     helper.repository(resources.toArray)
   }
 
@@ -75,8 +90,8 @@ class FelixRepositories(bundleContext: BundleContext) {
     case None => filterStr
   }
 
-  def resolveRequirements(repo: Repository, requirements: Seq[OsgiRequirement]): Array[Reason] \/ Seq[File] = {
-    val resolver = repoAdmin.resolver(Array(repo, repoAdmin.getSystemRepository))
+  def resolveRequirements(repos: Seq[Repository], requirements: Seq[OsgiRequirement]): Array[Reason] \/ Seq[BundleLocation] = {
+    val resolver = repoAdmin.resolver((repos :+ repoAdmin.getSystemRepository).toArray)
     val helper = repoAdmin.getHelper
     val reqs = requirements.map {
       case BundleRequirement(name, ver) => helper.requirement(Capability.BUNDLE, withVersion(s"(symbolicname=$name)", ver))
@@ -86,7 +101,7 @@ class FelixRepositories(bundleContext: BundleContext) {
     reqs.foreach(resolver.add)
     val success = resolver.resolve()
     if (success) {
-      resolver.getRequiredResources.map(r => new File(URI.create(r.getURI))).toSeq.right
+      resolver.getRequiredResources.map(r => BundleLocation(new File(URI.create(r.getURI)))).toSeq.right
     } else resolver.getUnsatisfiedRequirements.left
   }
 }

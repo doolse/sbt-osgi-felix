@@ -12,3 +12,4 @@ libraryDependencies ++= Seq("biz.aQute.bnd" % "bndlib" % "2.4.0",
 
 sbtPlugin := true
 
+addSbtPlugin("com.typesafe.sbt" % "sbt-osgi" % "0.7.0")
