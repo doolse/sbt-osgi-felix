@@ -101,7 +101,8 @@ class FelixRepositories(bundleContext: BundleContext) {
     reqs.foreach(resolver.add)
     val success = resolver.resolve()
     if (success) {
-      resolver.getRequiredResources.map(r => BundleLocation(new File(URI.create(r.getURI)))).toSeq.right
+      val systemBundle = BundleLocation(IO.classLocationFile[BundleContext])
+      (resolver.getRequiredResources.map(r => BundleLocation(new File(URI.create(r.getURI)))).toSeq ++ Seq(systemBundle)).right
     } else resolver.getUnsatisfiedRequirements.left
   }
 }

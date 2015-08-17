@@ -2,7 +2,9 @@ package osgifelix
 
 import java.io.File
 
+import com.typesafe.sbt.osgi.OsgiKeys._
 import com.typesafe.sbt.osgi.OsgiManifestHeaders
+import org.apache.felix.bundlerepository.{RepositoryAdmin, Reason, Repository}
 import sbt._
 import aQute.bnd.osgi.{Jar, Builder}
 import aQute.bnd.osgi.Constants._
@@ -10,6 +12,8 @@ import java.util.Properties
 import sbt._
 import sbt.Keys._
 import scala.collection.JavaConversions._
+import scalaz.Id.Id
+import Keys._
 
 /**
  * Created by jolz on 13/08/15.
@@ -24,7 +28,7 @@ object OsgiTasks {
       else RewriteManifest(Some(mid), jar, prefix + mid.name, SbtUtils.convertRevision(mid.revision), ManifestInstructions.Default)
     }
     val unusedFilters = filters.toSet
-    val (u, _, insts) = configReport.foldLeft((unusedFilters, unusedFilters, Seq.empty[BundleInstructions])) {
+    val (u, _, insts) = configReport.foldLeft((unusedFilters, filters, Seq.empty[BundleInstructions])) {
       case ((unused, filters, instructions), (mid, art, file)) =>
         val matchedFilters = filters.filter(_.filter("", mid, art))
         val (newInsts, nextFilters) = if (matchedFilters.isEmpty) {
@@ -44,7 +48,7 @@ object OsgiTasks {
               (optionalDefault :+ CreateBundle(Seq(mid), allFiles.map(_._1), name, version, instructions), Some(f, allFiles.map(_._2)))
           }
           (changes.flatMap(_._1), changes.foldLeft(filters) {
-            case (newFilters, (_, Some((matched, replacements)))) => (newFilters - matched) ++ replacements
+            case (newFilters, (_, Some((matched, replacements)))) => newFilters.filter(_ != matched) ++ replacements
             case (nf, _) => nf
           })
         }
@@ -120,4 +124,123 @@ object OsgiTasks {
 
   def parts(s: String) = s split "[.-]" filterNot (_.isEmpty)
 
+  val depsWithClasses = Def.task {
+    val cp = (dependencyClasspath in Compile).value
+    val classes = (classDirectory in Compile).value
+    cp ++ Seq(classes).classpath
+  }
+
+  val writeManifest = Def.task {
+    (compile in Compile).value
+    streams.value.log.info("Doing the manifest")
+    val manifestDir = (resourceManaged in Compile).value / "META-INF"
+    IO.createDirectory(manifestDir)
+    val manifestFile = manifestDir / "MANIFEST.MF"
+    val headers = manifestHeaders.value
+    val addHeaders = additionalHeaders.value
+    val cp = depsWithClasses.value
+    val jar = OsgiTasks.bundleTask(headers, addHeaders, cp, (artifactPath in(Compile, packageBin)).value,
+      (resourceDirectories in Compile).value, embeddedJars.value, streams.value)
+    Using.fileOutputStream()(manifestFile) { fo =>
+      jar.getManifest.write(fo)
+    }
+    Seq(manifestFile)
+  }
+
+  lazy val OsgiConfig = config("osgi")
+
+  lazy val repoAdminTask = Def.task {
+    val storage = target.value / "repo-admin"
+    val file = IO.classLocationFile(classOf[RepositoryAdmin])
+    FelixRepositories.runRepoAdmin(Seq(file), storage)
+  }
+
+  def writeErrors(reasons: Array[Reason], logger: Logger) = {
+    reasons.foreach {
+      r => logger.error {
+        val req = r.getRequirement
+        s"Failed to find ${req.getName} with ${req.getFilter} for ${r.getResource.getSymbolicName} "
+      }
+    }
+  }
+
+  lazy val cachedRepoLookup = Def.taskDyn[Repository] {
+    val instructions = osgiInstructions.value
+    val cacheFile = target.value / "bundle.cache"
+    val binDir = target.value / "bundles"
+    val indexFile = target.value / "index.xml"
+    val cacheData = BndManifestGenerator.serialize(instructions)
+    if (cacheFile.exists() && indexFile.exists() && IO.read(cacheFile) == cacheData) {
+      Def.task {
+        repoAdminTask.value(_.loadRepository(indexFile))
+      }
+    } else Def.task {
+      IO.delete(binDir)
+      IO.delete(cacheFile)
+      IO.createDirectory(binDir)
+      val logger = streams.value.log
+      val builder = BndManifestGenerator.buildJars[Id](instructions, binDir)
+      val jars = builder.run(new BundleProgress[Id] {
+        override def info(msg: String): Id[Unit] = {
+          logger.info(msg)
+        }
+      }).map(_.jf).toSeq
+      repoAdminTask.value { repoAdmin =>
+        val repo = repoAdmin.createIndexedRepository(jars.map(BundleLocation.apply))
+        val reasons = repoAdmin.checkConsistency(repo)
+        if (reasons.isEmpty)
+        {
+          IO.write(cacheFile, cacheData)
+          repoAdmin.writeRepo(repo, indexFile)
+          repo
+        } else {
+          writeErrors(reasons, logger)
+          sys.error("Failed consistency check")
+        }
+      }
+    }
+  }
+
+  lazy val createInstructions = Def.task {
+    val ordered = SbtUtils.orderedDependencies(originalUpdate.value.configuration(OsgiConfig.name).get)
+    val typeFilter: NameFilter = "jar" | "bundle"
+    val artifacts = ordered.flatMap { mr =>
+      mr.artifacts.collectFirst {
+        case (artifact, file) if typeFilter.accept(artifact.`type`) => (mr.module, artifact, file)
+      }
+    }
+    val rules = osgiFilterRules.value
+    val pfx = osgiPrefix.value
+    val (unused, insts) = OsgiTasks.convertToInstructions(pfx, artifacts, rules)
+    if (unused.nonEmpty) {
+      val logger = streams.value.log
+      unused.foreach { r =>
+        logger.warn(s"OSGi filter rule '${r}' is not used")
+      }
+    }
+    insts
+  }
+
+  lazy val osgiUpdateReport = Def.task {
+    val updateReport = originalUpdate.value
+    val cached = target.value / "update.cache"
+    val repo = osgiRepository.value
+    val deps = osgiDependencies.value
+    val resolved = repoAdminTask.value { repoAdmin =>
+      repoAdmin.resolveRequirements(Seq(repo), deps)
+    }.leftMap {
+      writeErrors(_, streams.value.log)
+    }.getOrElse(Seq.empty)
+    val osgiModules = resolved.map { bl =>
+      val f = bl.file
+      val mr = ModuleReport("osgi" % f.getName % "1.0", Seq(Artifact(f.getName) -> f), Seq.empty)
+      OrganizationArtifactReport("osgi", f.getName, Seq(mr))
+    }
+    val configReport = updateReport.configuration("scala-tool").get
+    val allNewModules = osgiModules.flatMap(_.modules) ++ configReport.modules
+    val allOrgReportts = configReport.details ++ osgiModules
+    val newConfig = new ConfigurationReport("compile", allNewModules, allOrgReportts, Seq.empty)
+    val newConfigs = Seq(newConfig) ++ (updateReport.configurations.filter(r => !Set("compile", "runtime", "compile-internal", "runtime-internal").contains(r.configuration)))
+    new UpdateReport(cached, newConfigs, new UpdateStats(0, 0, 0, false), Map.empty)
+  }
 }
