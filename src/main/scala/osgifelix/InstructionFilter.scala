@@ -6,7 +6,7 @@ import sbt._
 /**
  * Created by jolz on 13/08/15.
  */
-object InstructionFilter {
+trait InstructionFilters {
 
   def rewrite(moduleName: String, imports: String = "*", exports: String = "*;version=VERSION"): InstructionFilter =
     rewriteFilter(moduleName, moduleFilter(name = moduleName), imports, exports)

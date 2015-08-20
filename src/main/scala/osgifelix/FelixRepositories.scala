@@ -4,10 +4,11 @@ import java.io.{FileReader, FileWriter, File}
 import java.net.{URL, URI}
 import java.util.jar.JarFile
 
+import org.apache.felix.bundlerepository.Resolver
 import org.apache.felix.bundlerepository._
 import org.osgi.framework.{VersionRange, BundleContext}
 import org.osgi.util.tracker.ServiceTracker
-import sbt._
+import sbt.{Resolver => _, _}
 
 import scalaz.\/
 import scalaz.syntax.either._
@@ -24,10 +25,13 @@ object FelixRepositories {
   def runRepoAdmin(bundles: Seq[File], storageDir: File): FelixRepoRunner = {
     val config = BundleStartConfig(systemPackages = Seq("org.apache.felix.bundlerepository;version=2.1"), defaultStart = bundles.map(b => BundleLocation(b)))
     new FelixRepoRunner {
-      override def apply[A](f: (FelixRepositories) => A): A = FelixEmbedder.embed(config, storageDir)(c => f(new FelixRepositories(c)))
+      override def apply[A](f: (FelixRepositories) => A): A = FelixRepositories.synchronized {
+        FelixRunner.embed(config, storageDir)(c => f(new FelixRepositories(c)))
+      }
     }
   }
 }
+
 
 sealed trait OsgiRequirement
 
@@ -45,7 +49,7 @@ class FelixRepositories(bundleContext: BundleContext) {
     tracker.waitForService(1000L)
   }
 
-  def writeRepo(repo: Repository, indexFile: File) = {
+  def writeRepository(repo: Repository, indexFile: File) = {
     val helper = repoAdmin.getHelper
     val writer = new FileWriter(indexFile)
     helper.writeRepository(repo, writer)
@@ -62,7 +66,7 @@ class FelixRepositories(bundleContext: BundleContext) {
     }
   }
 
-  def createIndexedRepository(jarFiles: Seq[BundleLocation]) = {
+  def createRepository(jarFiles: Seq[BundleLocation]) = {
     val helper = repoAdmin.getHelper
     val resources = jarFiles.map { j =>
       val file = j.file
@@ -90,7 +94,7 @@ class FelixRepositories(bundleContext: BundleContext) {
     case None => filterStr
   }
 
-  def resolveRequirements(repos: Seq[Repository], requirements: Seq[OsgiRequirement]): Array[Reason] \/ Seq[BundleLocation] = {
+  private def setupRequirements(requirements: Seq[OsgiRequirement], repos: Seq[Repository]) = {
     val resolver = repoAdmin.resolver((repos :+ repoAdmin.getSystemRepository).toArray)
     val helper = repoAdmin.getHelper
     val reqs = requirements.map {
@@ -99,10 +103,36 @@ class FelixRepositories(bundleContext: BundleContext) {
       case FragmentsRequirement(name) => helper.requirement(Capability.FRAGMENT, s"(host=$name)")
     }
     reqs.foreach(resolver.add)
+    (resolver, helper)
+  }
+
+  def resolveRequirements(repos: Seq[Repository], requirements: Seq[OsgiRequirement]): Array[Reason] \/ Seq[BundleLocation] = {
+    val (resolver, helper) = setupRequirements(requirements, repos)
     val success = resolver.resolve()
     if (success) {
       val systemBundle = BundleLocation(IO.classLocationFile[BundleContext])
       (resolver.getRequiredResources.map(r => BundleLocation(new File(URI.create(r.getURI)))).toSeq ++ Seq(systemBundle)).right
     } else resolver.getUnsatisfiedRequirements.left
+  }
+
+  def resolveStartConfig(repos: Seq[Repository], resources: Seq[BundleLocation], requirements: Seq[OsgiRequirement],
+                         startBundles: Map[Int, Seq[BundleRequirement]]): Array[Reason] \/ BundleStartConfig = {
+    val allReq = requirements ++ startBundles.flatMap(_._2)
+    val (resolver, helper) = setupRequirements(allReq, repos)
+    resources.foreach { r =>
+      resolver.add(helper.createResource(r.file.toURI.toURL))
+    }
+    val bundleLevelMap = startBundles.flatMap {
+      case ((level, reqs)) => reqs.map(r => (r.name, level))
+    }
+    val success = resolver.resolve()
+    if (success) {
+      val runMap = resolver.getRequiredResources.map { r =>
+        val runLevel = bundleLevelMap.get(r.getSymbolicName).getOrElse(0)
+        (runLevel, BundleLocation(new File(URI.create(r.getURI))))
+      }.groupBy(_._1).mapValues(_.map(_._2).toSeq)
+      BundleStartConfig(started = runMap - 0, defaultStart = runMap.get(0).getOrElse(Seq.empty)).right
+    } else resolver.getUnsatisfiedRequirements.left
+
   }
 }

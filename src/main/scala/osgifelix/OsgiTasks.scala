@@ -2,6 +2,7 @@ package osgifelix
 
 import java.io.File
 
+import aQute.bnd.version.Version
 import com.typesafe.sbt.osgi.OsgiKeys._
 import com.typesafe.sbt.osgi.OsgiManifestHeaders
 import org.apache.felix.bundlerepository.{RepositoryAdmin, Reason, Repository}
@@ -25,7 +26,7 @@ object OsgiTasks {
     def autoDetect(mid: ModuleID, file: File) = {
       val (jar, nameVer) = BndManifestGenerator.parseDetails(file)
       if (nameVer.isDefined) UseBundle(Some(mid), file, jar)
-      else RewriteManifest(Some(mid), jar, prefix + mid.name, SbtUtils.convertRevision(mid.revision), ManifestInstructions.Default)
+      else RewriteManifest(Some(mid), jar, prefix + mid.name, convertRevision(mid.revision), ManifestInstructions.Default)
     }
     val unusedFilters = filters.toSet
     val (u, _, insts) = configReport.foldLeft((unusedFilters, filters, Seq.empty[BundleInstructions])) {
@@ -38,7 +39,7 @@ object OsgiTasks {
             case RewriteFilter(_, _, instructions, nameO, versionO) =>
               val (jar, nameVer) = BndManifestGenerator.parseDetails(file)
               val name = nameO.orElse(nameVer.map(_._1)).getOrElse(prefix + mid.name)
-              val version = versionO.orElse(nameVer.map(_._2)).getOrElse(SbtUtils.convertRevision(mid.revision))
+              val version = versionO.orElse(nameVer.map(_._2)).getOrElse(convertRevision(mid.revision))
               (Seq(RewriteManifest(Some(mid), jar, name, version, instructions)), None)
             case f@CreateFilter(_, filter, name, version, instructions, processDefault) =>
               val allFiles = configReport.collect {
@@ -130,10 +131,10 @@ object OsgiTasks {
     cp ++ Seq(classes).classpath
   }
 
-  val writeManifest = Def.task {
+  val devManifestTask = Def.task {
     (compile in Compile).value
-    streams.value.log.info("Doing the manifest")
-    val manifestDir = (resourceManaged in Compile).value / "META-INF"
+    val classesDir = (classDirectory in Compile).value
+    val manifestDir = classesDir / "META-INF"
     IO.createDirectory(manifestDir)
     val manifestFile = manifestDir / "MANIFEST.MF"
     val headers = manifestHeaders.value
@@ -144,13 +145,11 @@ object OsgiTasks {
     Using.fileOutputStream()(manifestFile) { fo =>
       jar.getManifest.write(fo)
     }
-    Seq(manifestFile)
+    BundleLocation(classesDir)
   }
 
-  lazy val OsgiConfig = config("osgi")
-
-  lazy val repoAdminTask = Def.task {
-    val storage = target.value / "repo-admin"
+  lazy val repoAdminTaskRunner = Def.setting {
+    val storage = target.value / "repos-admin"
     val file = IO.classLocationFile(classOf[RepositoryAdmin])
     FelixRepositories.runRepoAdmin(Seq(file), storage)
   }
@@ -164,15 +163,16 @@ object OsgiTasks {
     }
   }
 
-  lazy val cachedRepoLookup = Def.taskDyn[Repository] {
+  lazy val cachedRepoLookupTask = Def.taskDyn[Repository] {
     val instructions = osgiInstructions.value
-    val cacheFile = target.value / "bundle.cache"
-    val binDir = target.value / "bundles"
-    val indexFile = target.value / "index.xml"
+    val obrDir = osgiRepositoryDir.value
+    val cacheFile = obrDir / "bundle.cache"
+    val binDir = obrDir / "bundles"
+    val indexFile = obrDir / "index.xml"
     val cacheData = BndManifestGenerator.serialize(instructions)
     if (cacheFile.exists() && indexFile.exists() && IO.read(cacheFile) == cacheData) {
       Def.task {
-        repoAdminTask.value(_.loadRepository(indexFile))
+        osgiRepoAdmin.value(_.loadRepository(indexFile))
       }
     } else Def.task {
       IO.delete(binDir)
@@ -185,13 +185,13 @@ object OsgiTasks {
           logger.info(msg)
         }
       }).map(_.jf).toSeq
-      repoAdminTask.value { repoAdmin =>
-        val repo = repoAdmin.createIndexedRepository(jars.map(BundleLocation.apply))
+      osgiRepoAdmin.value { repoAdmin =>
+        val repo = repoAdmin.createRepository(jars.map(BundleLocation.apply))
         val reasons = repoAdmin.checkConsistency(repo)
         if (reasons.isEmpty)
         {
           IO.write(cacheFile, cacheData)
-          repoAdmin.writeRepo(repo, indexFile)
+          repoAdmin.writeRepository(repo, indexFile)
           repo
         } else {
           writeErrors(reasons, logger)
@@ -201,8 +201,25 @@ object OsgiTasks {
     }
   }
 
-  lazy val createInstructions = Def.task {
-    val ordered = SbtUtils.orderedDependencies(originalUpdate.value.configuration(OsgiConfig.name).get)
+  def convertRevision(revision: String): Version = {
+    VersionNumber(revision) match {
+      case VersionNumber((nums, _, _)) => new Version(nums.slice(0, 3).padTo(3, 0).mkString(".") + ".SNAPSHOT")
+    }
+  }
+
+  def orderedDependencies(modList: Seq[ModuleReport]): List[ModuleReport] = {
+    val modMap = modList.map(m ⇒ (m.module, m)).toMap
+    val ordered = Dag.topologicalSort(modList.map(_.module))(m ⇒ modMap.get(m).map(_.callers.map(_.caller)).getOrElse(Seq.empty)).reverse
+    ordered.flatMap(modMap.get)
+  }
+
+
+  lazy val createInstructionsTask = Def.task {
+    val configFilter = osgiRepositoryConfigurations.value
+    val report = update.value
+    val ordered = orderedDependencies(report.configurations.flatMap { cr =>
+      if (configFilter(cr.configuration)) cr.modules else Nil
+    })
     val typeFilter: NameFilter = "jar" | "bundle"
     val artifacts = ordered.flatMap { mr =>
       mr.artifacts.collectFirst {
@@ -221,26 +238,14 @@ object OsgiTasks {
     insts
   }
 
-  lazy val osgiUpdateReport = Def.task {
-    val updateReport = originalUpdate.value
-    val cached = target.value / "update.cache"
+  lazy val osgiDependencyClasspathTask = Def.task[Classpath] {
     val repo = osgiRepository.value
     val deps = osgiDependencies.value
-    val resolved = repoAdminTask.value { repoAdmin =>
+    osgiRepoAdmin.value { repoAdmin =>
       repoAdmin.resolveRequirements(Seq(repo), deps)
-    }.leftMap {
-      writeErrors(_, streams.value.log)
-    }.getOrElse(Seq.empty)
-    val osgiModules = resolved.map { bl =>
-      val f = bl.file
-      val mr = ModuleReport("osgi" % f.getName % "1.0", Seq(Artifact(f.getName) -> f), Seq.empty)
-      OrganizationArtifactReport("osgi", f.getName, Seq(mr))
+    }.map(_.map(_.file).classpath) valueOr { reasons =>
+      writeErrors(reasons, streams.value.log)
+      sys.error("Error looking up dependencies")
     }
-    val configReport = updateReport.configuration("scala-tool").get
-    val allNewModules = osgiModules.flatMap(_.modules) ++ configReport.modules
-    val allOrgReportts = configReport.details ++ osgiModules
-    val newConfig = new ConfigurationReport("compile", allNewModules, allOrgReportts, Seq.empty)
-    val newConfigs = Seq(newConfig) ++ (updateReport.configurations.filter(r => !Set("compile", "runtime", "compile-internal", "runtime-internal").contains(r.configuration)))
-    new UpdateReport(cached, newConfigs, new UpdateStats(0, 0, 0, false), Map.empty)
   }
 }

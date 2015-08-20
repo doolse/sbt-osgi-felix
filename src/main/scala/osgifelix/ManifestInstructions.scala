@@ -13,12 +13,6 @@ object ManifestInstructions {
 case class ManifestInstructions(imports: String = "*", exports: String = "*;version=VERSION",
                                 privates: String = "", fragment: Option[String] = None,  extraProperties: Map[String, String] = Map.empty)
 
-object BundleInstructions
-{
-  def manifestOnly(symbolicName: String, version: String, headers: Map[String, String]) =
-    ManifestOnly(None, symbolicName, new Version(version), headers)
-}
-
 sealed trait BundleInstructions
 
 case class RewriteManifest(moduleId: Option[ModuleID], jar: Jar, symbolicName: String, version: Version, instructions: ManifestInstructions)  extends BundleInstructions
