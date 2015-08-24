@@ -6,15 +6,14 @@ import aQute.bnd.version.Version
 import com.typesafe.sbt.osgi.OsgiKeys._
 import com.typesafe.sbt.osgi.OsgiManifestHeaders
 import org.apache.felix.bundlerepository.{RepositoryAdmin, Reason, Repository}
-import sbt._
 import aQute.bnd.osgi.{Jar, Builder}
 import aQute.bnd.osgi.Constants._
 import java.util.Properties
+import org.osgi.framework.launch.Framework
 import sbt._
-import sbt.Keys._
-import scala.collection.JavaConversions._
 import scalaz.Id.Id
 import Keys._
+import OsgiFelixPlugin.autoImport._
 
 /**
  * Created by jolz on 13/08/15.
@@ -132,7 +131,7 @@ object OsgiTasks {
   }
 
   val devManifestTask = Def.task {
-    (compile in Compile).value
+    (fullClasspath in Compile).value
     val classesDir = (classDirectory in Compile).value
     val manifestDir = classesDir / "META-INF"
     IO.createDirectory(manifestDir)
@@ -149,7 +148,7 @@ object OsgiTasks {
   }
 
   lazy val repoAdminTaskRunner = Def.setting {
-    val storage = target.value / "repos-admin"
+    val storage = target.value / "repo-admin"
     val file = IO.classLocationFile(classOf[RepositoryAdmin])
     FelixRepositories.runRepoAdmin(Seq(file), storage)
   }
@@ -248,4 +247,29 @@ object OsgiTasks {
       sys.error("Error looking up dependencies")
     }
   }
+
+  lazy val osgiRunTask = Def.task[Unit] {
+    val devBundles = osgiRunBundles.value
+
+    val runner = osgiRepoAdmin.value
+    val libraryRepo = osgiRepository.value
+    runner { ra =>
+      val devRepo = ra.createRepository(devBundles)
+      val requirements = osgiRunRequirements.value
+
+      val startConfig = ra.resolveStartConfig(Seq(devRepo, libraryRepo), devBundles, requirements, osgiRunLevels.value).valueOr { e =>
+        writeErrors(e, streams.value.log)
+        sys.error("Failed to lookup run config")
+      }
+      val props = osgiRunEnvironment.value
+      props.foreach {
+        case (n, v) => System.setProperty(n, v)
+      }
+
+      FelixRunner.embed(startConfig.copy(frameworkLevel = osgiRunFrameworkLevel.value, defaultLevel = osgiRunDefaultLevel.value), IO.createTemporaryDirectory) {
+        _.getBundle(0).adapt(classOf[Framework]).waitForStop(0L)
+      }
+    }
+  }
+
 }

@@ -66,9 +66,9 @@ class FelixRepositories(bundleContext: BundleContext) {
     }
   }
 
-  def createRepository(jarFiles: Seq[BundleLocation]) = {
+  def resourcesFromLocations(locations: Seq[BundleLocation]) = {
     val helper = repoAdmin.getHelper
-    val resources = jarFiles.map { j =>
+    locations.map { j =>
       val file = j.file
       if (file.isDirectory) {
         val attr = Using.fileInputStream(file / JarFile.MANIFEST_NAME) { finp =>
@@ -79,7 +79,11 @@ class FelixRepositories(bundleContext: BundleContext) {
         res
       } else helper.createResource(file.toURI.toURL)
     }
-    helper.repository(resources.toArray)
+  }
+
+  def createRepository(jarFiles: Seq[BundleLocation]) = {
+    val helper = repoAdmin.getHelper
+    helper.repository(resourcesFromLocations(jarFiles).toArray)
   }
 
   def checkConsistency(repo: Repository) = {
@@ -108,7 +112,7 @@ class FelixRepositories(bundleContext: BundleContext) {
 
   def resolveRequirements(repos: Seq[Repository], requirements: Seq[OsgiRequirement]): Array[Reason] \/ Seq[BundleLocation] = {
     val (resolver, helper) = setupRequirements(requirements, repos)
-    val success = resolver.resolve()
+    val success = resolver.resolve(Resolver.NO_OPTIONAL_RESOURCES)
     if (success) {
       val systemBundle = BundleLocation(IO.classLocationFile[BundleContext])
       (resolver.getRequiredResources.map(r => BundleLocation(new File(URI.create(r.getURI)))).toSeq ++ Seq(systemBundle)).right
@@ -119,15 +123,13 @@ class FelixRepositories(bundleContext: BundleContext) {
                          startBundles: Map[Int, Seq[BundleRequirement]]): Array[Reason] \/ BundleStartConfig = {
     val allReq = requirements ++ startBundles.flatMap(_._2)
     val (resolver, helper) = setupRequirements(allReq, repos)
-    resources.foreach { r =>
-      resolver.add(helper.createResource(r.file.toURI.toURL))
-    }
+    resourcesFromLocations(resources).foreach(resolver.add)
     val bundleLevelMap = startBundles.flatMap {
       case ((level, reqs)) => reqs.map(r => (r.name, level))
     }
-    val success = resolver.resolve()
+    val success = resolver.resolve(Resolver.NO_OPTIONAL_RESOURCES)
     if (success) {
-      val runMap = resolver.getRequiredResources.map { r =>
+      val runMap = (resolver.getRequiredResources ++ resolver.getAddedResources).map { r =>
         val runLevel = bundleLevelMap.get(r.getSymbolicName).getOrElse(0)
         (runLevel, BundleLocation(new File(URI.create(r.getURI))))
       }.groupBy(_._1).mapValues(_.map(_._2).toSeq)
