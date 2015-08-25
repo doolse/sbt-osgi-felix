@@ -1,7 +1,7 @@
 package osgifelix
 
 import aQute.bnd.version.Version
-import com.typesafe.sbt.osgi.SbtOsgi
+import com.typesafe.sbt.osgi.SbtOsgi.defaultOsgiSettings
 import org.apache.felix.bundlerepository.Repository
 import org.osgi.framework.VersionRange
 import sbt.Keys._
@@ -50,7 +50,7 @@ object OsgiFelixPlugin extends AutoPlugin {
 
     import OsgiTasks._
 
-    lazy val defaultSingleProjectSettings = repositorySettings ++ bundleSettings(ThisProject) ++ runnerSettings(ThisProject)
+    lazy val defaultSingleProjectSettings = repositorySettings ++ bundleSettings(ThisProject) ++ runnerSettings(ThisProject) ++ defaultOsgiSettings
 
     lazy val repositorySettings = Seq(
       osgiExtraJDKPackages := Seq("sun.reflect", "sun.reflect.generics.reflectiveObjects", "com.sun.jna", "com.sun", "sun.misc", "com.sun.jdi", "com.sun.jdi.connect",
@@ -74,7 +74,8 @@ object OsgiFelixPlugin extends AutoPlugin {
     )
 
     def bundleSettings(repositoryProject: ProjectReference) = Seq(
-      osgiDependencies := Seq(),
+      osgiDependencies := Seq.empty,
+      osgiFilterRules := Seq.empty,
       osgiRepoAdmin <<= repoAdminTaskRunner,
       osgiDevManifest <<= devManifestTask,
       osgiDependencyClasspath <<= osgiDependencyClasspathTask,
