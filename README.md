@@ -17,8 +17,8 @@ So this is where sbt-osgi-felix comes in.
 
 ## Features
 
-* Use normal SBT libraryDependencies to get your dependencies
-* Rewrite manifests & Create bundles from your dependencies (using BND)
+* Use normal SBT libraryDependencies to create bundles
+* Rewrite/Create Manifests from your dependencies (using BND)
 * Put the dependencies into an OSGi Bundle Repository using [Apache Felix](http://felix.apache.org/)
 * Validate the bundles resolution in the OBR repository
 * Lookup compilation dependencies using the [Felix Bundle Repository](http://felix.apache.org/documentation/subprojects/apache-felix-osgi-bundle-repository.html) resolver
@@ -33,27 +33,48 @@ Add the plugin in `project/plugins.sbt`
 TODO: when published
 ```
 
-Add your library dependencies to your build:
 
 `build.sbt`
 
+Include the settings for creating an OBR repository and resolving against it.
+
 ```
-import osgifelix._
+defaultSingleProjectSettings
 
+scalaVersion := "2.11.6"
+```
 
+Add your library dependencies to your build:
 
+```
 libraryDependencies ++= Seq(
-      "org.elasticsearch" % "elasticsearch" % "1.2.1",
-      "com.sonian" % "elasticsearch-zookeeper" % "1.2.0",
-      "org.apache.zookeeper" % "zookeeper" % "3.4.6")
-
+  "org.elasticsearch" % "elasticsearch" % "1.2.1",
+  "com.sonian" % "elasticsearch-zookeeper" % "1.2.0",
+  "org.slf4j" % "slf4j-simple" % "1.7.12",
+  "org.slf4j" % "slf4j-api" % "1.7.12",
+  "org.slf4j" % "jcl-over-slf4j" % "1.7.12",
+  "org.slf4j" % "log4j-over-slf4j" % "1.7.12",
+  "org.apache.zookeeper" % "zookeeper" % "3.4.6")
 ```
 
 Add your rewrite rules:
 
 ```
 osgiFilterRules := Seq(
-    rewrite("zookeeper", imports = "org.ieft.jgss.*,org.apache.log4j.jmx.*;resolution:=optional,*"),
-    create("elasticsearch" | "lucene*", symbolicName = "elasticsearch", version = "1.2.1", "com.vividsolutions.jts.*;resolution:=optional,org.hyperic.sigar;resolution:=optional,org.apache.regexp;resolution:=optional,*", "org.apache.lucene.*,org.elasticsearch.*,org.tartarus.snowball.*")
+  rewrite("zookeeper", imports = "org.ieft.jgss.*,org.apache.log4j.jmx.*;resolution:=optional,*"),
+  ignoreAll("globalIgnores", "log4j", "slf4j-log4j12"),
+  create("elasticsearch" | "lucene*", symbolicName = "elasticsearch", version = "1.2.1",
+    imports = "com.vividsolutions.jts.*;resolution:=optional,org.hyperic.sigar;resolution:=optional,org.apache.regexp;resolution:=optional,*",
+    exports = "org.apache.lucene.*,org.elasticsearch.*,org.tartarus.snowball.*")
 )
 ```
+
+Finally, use the felix resolver to select jars for your compile path:
+```
+osgiDependencies := packageReqs("org.elasticsearch.client")
+```
+
+## Manifest writing rules
+
+TODO
+
