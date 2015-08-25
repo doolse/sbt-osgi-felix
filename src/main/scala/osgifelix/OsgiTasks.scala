@@ -248,7 +248,7 @@ object OsgiTasks {
     }
   }
 
-  lazy val osgiRunTask = Def.task[Unit] {
+  lazy val osgiRunTask = Def.inputTask[Unit] {
     val devBundles = osgiRunBundles.value
 
     val runner = osgiRepoAdmin.value
@@ -261,7 +261,7 @@ object OsgiTasks {
         writeErrors(e, streams.value.log)
         sys.error("Failed to lookup run config")
       }
-      val props = osgiRunEnvironment.value
+      val props = (envVars in run).value
       props.foreach {
         case (n, v) => System.setProperty(n, v)
       }

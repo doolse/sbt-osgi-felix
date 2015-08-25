@@ -29,10 +29,9 @@ object OsgiFelixPlugin extends AutoPlugin {
     lazy val osgiRunLevels = settingKey[Map[Int, Seq[BundleRequirement]]]("OSGi run level configuration")
     lazy val osgiRunFrameworkLevel = settingKey[Int]("OSgi runner framework run level")
     lazy val osgiRunDefaultLevel = settingKey[Int]("OSgi runner default run level")
-    lazy val osgiRunRequirements = settingKey[Seq[BundleRequirement]]("OSGi runner resolver requirements")
+    lazy val osgiRunRequirements = settingKey[Seq[OsgiRequirement]]("OSGi runner resolver requirements")
     lazy val osgiRunInclusions = taskKey[Seq[BundleLocation]]("OSGi runner auto-started bundles")
     lazy val osgiRunEnvironment = taskKey[Map[String, String]]("OSGi runner environment variables")
-    lazy val osgiRun = taskKey[Unit]("Run the OSGi framework")
 
 
     def manifestOnly(symbolicName: String, version: String, headers: Map[String, String]) =
@@ -95,7 +94,7 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRunLevels := Map.empty,
       osgiRunInclusions <<= osgiRunBundles,
       osgiRunEnvironment := Map.empty,
-      osgiRun <<= osgiRunTask
+      run <<= osgiRunTask
     )
   }
 
