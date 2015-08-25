@@ -2,6 +2,7 @@ package osgifelix
 
 import aQute.bnd.version.Version
 import com.typesafe.sbt.osgi.SbtOsgi.defaultOsgiSettings
+import com.typesafe.sbt.osgi.OsgiKeys.bundle
 import org.apache.felix.bundlerepository.Repository
 import org.osgi.framework.VersionRange
 import sbt.Keys._
@@ -15,23 +16,30 @@ object OsgiFelixPlugin extends AutoPlugin {
   object autoImport extends InstructionFilters {
     lazy val osgiRepository = taskKey[Repository]("Repository for resolving osgi dependencies")
     lazy val osgiRepositoryDir = settingKey[File]("Directory to store created OBR repository")
-    lazy val osgiRepositoryConfigurations = settingKey[ConfigurationFilter]("Configuration to include in OBR repository")
+    lazy val osgiRepositoryConfigurations = settingKey[ConfigurationFilter]("Ivy configurations to include in OBR repository")
+    lazy val osgiFilterRules = settingKey[Seq[InstructionFilter]]("Filters for generating BND instructions")
     lazy val osgiInstructions = taskKey[Seq[BundleInstructions]]("Instructions for BND")
+    lazy val osgiRepoAdmin = settingKey[FelixRepoRunner]("Repository admin interface")
+    lazy val osgiExtraJDKPackages = settingKey[Seq[String]]("Extra JDK packages for framework classpath")
+    lazy val osgiPrefix = settingKey[String]("Prefix for generated bundle names")
+
     lazy val osgiDependencies = settingKey[Seq[OsgiRequirement]]("OSGi dependencies")
     lazy val osgiDependencyClasspath = taskKey[Classpath]("Classpath from OSGi dependencies")
-    lazy val osgiFilterRules = settingKey[Seq[InstructionFilter]]("Filters for generating BND instructions")
-    lazy val osgiPrefix = settingKey[String]("Prefix for generated bundle names")
-    lazy val osgiExtraJDKPackages = settingKey[Seq[String]]("Extra JDK packages for framework classpath")
-    lazy val osgiRepoAdmin = settingKey[FelixRepoRunner]("Repository admin interface")
     lazy val osgiDevManifest = taskKey[BundleLocation]("Generate dev bundle")
 
-    lazy val osgiRunBundles = taskKey[Seq[BundleLocation]]("OSGi compile bundles")
+    lazy val osgiBundles = taskKey[Seq[BundleLocation]]("OSGi bundle locations")
+
     lazy val osgiRunLevels = settingKey[Map[Int, Seq[BundleRequirement]]]("OSGi run level configuration")
     lazy val osgiRunFrameworkLevel = settingKey[Int]("OSgi runner framework run level")
     lazy val osgiRunDefaultLevel = settingKey[Int]("OSgi runner default run level")
     lazy val osgiRunRequirements = settingKey[Seq[OsgiRequirement]]("OSGi runner resolver requirements")
     lazy val osgiRunInclusions = taskKey[Seq[BundleLocation]]("OSGi runner auto-started bundles")
+
+    lazy val osgiStartConfig = taskKey[BundleStartConfig]("OSGi framework start configuration")
+
     lazy val osgiRunEnvironment = taskKey[Map[String, String]]("OSGi runner environment variables")
+
+    lazy val osgiDeploy = taskKey[(File, ForkOptions, Seq[String])]("Deploy to directory")
 
 
     def manifestOnly(symbolicName: String, version: String, headers: Map[String, String]) =
@@ -87,14 +95,22 @@ object OsgiFelixPlugin extends AutoPlugin {
 
     def runnerSettings(repositoryProject: ProjectReference) = Seq(
       osgiRepository := (osgiRepository in repositoryProject).value,
-      osgiRunBundles := Seq(osgiDevManifest.value),
+      osgiBundles in run := Seq(osgiDevManifest.value),
       osgiRunDefaultLevel := 1,
       osgiRunFrameworkLevel := 1,
       osgiRunRequirements := Seq.empty,
       osgiRunLevels := Map.empty,
-      osgiRunInclusions <<= osgiRunBundles,
+      osgiStartConfig in run <<= osgiStartConfigTask(run),
+      osgiRunInclusions <<= osgiBundles in run,
       osgiRunEnvironment := Map.empty,
       run <<= osgiRunTask
+    )
+
+    def deploymentSettings = Seq(
+      osgiBundles in osgiDeploy := bundle.all(ScopeFilter(inAnyProject)).value.map(BundleLocation.apply),
+      osgiStartConfig in osgiDeploy <<= osgiStartConfigTask(osgiDeploy),
+      artifactPath in osgiDeploy := target.value / "launcher",
+      osgiDeploy <<= osgiDeployTask
     )
   }
 

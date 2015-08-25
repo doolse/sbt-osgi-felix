@@ -248,28 +248,40 @@ object OsgiTasks {
     }
   }
 
-  lazy val osgiRunTask = Def.inputTask[Unit] {
-    val devBundles = osgiRunBundles.value
+  def osgiStartConfigTask(bundleScope: Scoped) = Def.task[BundleStartConfig] {
+    val bundles = (osgiBundles in bundleScope).value
 
     val runner = osgiRepoAdmin.value
     val libraryRepo = osgiRepository.value
     runner { ra =>
-      val devRepo = ra.createRepository(devBundles)
+      val devRepo = ra.createRepository(bundles)
       val requirements = osgiRunRequirements.value
 
-      val startConfig = ra.resolveStartConfig(Seq(devRepo, libraryRepo), devBundles, requirements, osgiRunLevels.value).valueOr { e =>
+      val startConfig = ra.resolveStartConfig(Seq(devRepo, libraryRepo), bundles, requirements, osgiRunLevels.value).valueOr { e =>
         writeErrors(e, streams.value.log)
-        sys.error("Failed to lookup run config")
+        sys.error("Failed to lookup start config")
       }
+      startConfig.copy(frameworkLevel = osgiRunFrameworkLevel.value, defaultLevel = osgiRunDefaultLevel.value)
+    }
+  }
+
+  lazy val osgiRunTask = Def.inputTask[Unit] {
+      val startConfig = (osgiStartConfig in run).value
       val props = (envVars in run).value
       props.foreach {
         case (n, v) => System.setProperty(n, v)
       }
 
-      FelixRunner.embed(startConfig.copy(frameworkLevel = osgiRunFrameworkLevel.value, defaultLevel = osgiRunDefaultLevel.value), IO.createTemporaryDirectory) {
+      FelixRunner.embed(startConfig, IO.createTemporaryDirectory) {
         _.getBundle(0).adapt(classOf[Framework]).waitForStop(0L)
       }
-    }
+  }
+
+  lazy val osgiDeployTask = Def.task[(File, ForkOptions, Seq[String])] {
+    val config = (osgiStartConfig in osgiDeploy).value
+    val dir = (artifactPath in osgiDeploy).value
+    val (ops, cmdLine) = FelixRunner.writeLauncher(config, dir)
+    (dir, ops, cmdLine)
   }
 
 }

@@ -2,13 +2,14 @@ package osgifelix
 
 import java.io.File
 import java.net.URI
+import java.util.Properties
 
 import org.apache.felix.framework.Felix
 import org.apache.felix.main.AutoProcessor
 import org.osgi.framework.wiring.BundleRevision
 import org.osgi.framework.{Constants, BundleContext}
 import org.osgi.framework.startlevel.{BundleStartLevel, FrameworkStartLevel}
-import sbt.{IO, ForkOptions}
+import sbt._
 
 import scala.collection.JavaConverters._
 
@@ -76,25 +77,61 @@ object FelixRunner {
     }
   }
 
+  def getBundlesWithDefaults(startConfig: BundleStartConfig) = {
+    val dftLevel = startConfig.defaultLevel
+    val allStarts = startConfig.started.updated(dftLevel, startConfig.started.getOrElse(dftLevel, Seq.empty) ++ startConfig.defaultStart)
+    val allInstalls = startConfig.installed.updated(dftLevel, startConfig.installed.getOrElse(dftLevel, Seq.empty) ++ startConfig.defaultInstall)
+    (allStarts, allInstalls)
+  }
+
+  def bundleOption(name: String, bundles: Seq[BundleLocation]) = {
+    name -> bundles.map(_.location).mkString(" ")
+  }
+
+  def doStart(levels: Map[Int, Seq[BundleLocation]]) = levels.map {
+    case (level, bnds) => bundleOption(s"felix.auto.start.$level", bnds)
+  }
+
+  def doInstall(levels: Map[Int, Seq[BundleLocation]]) = levels.map {
+    case (level, bnds) => bundleOption(s"felix.auto.start.$level", bnds)
+  }
+
   def forker(startConfig: BundleStartConfig): (ForkOptions, Seq[String]) = {
-    def bundleOption(name: String, bundles: Seq[BundleLocation]) = {
-      name -> bundles.map(_.location).mkString(" ")
-    }
-    val defaults = Seq(Constants.FRAMEWORK_BEGINNING_STARTLEVEL -> startConfig.frameworkLevel,
-      bundleOption(s"felix.auto.install.${startConfig.defaultLevel}", startConfig.defaultInstall ++ startConfig.installed.get(startConfig.defaultLevel).getOrElse(Seq.empty)),
-      bundleOption(s"felix.auto.start.${startConfig.defaultLevel}", startConfig.defaultStart ++ startConfig.started.get(startConfig.defaultLevel).getOrElse(Seq.empty))
-    )
-    val installs = startConfig.installed.collect {
-      case (level, bnds) if level != startConfig.defaultLevel => bundleOption(s"felix.auto.install.${level}", bnds)
-    }
-    val starts = startConfig.started.collect {
-      case (level, bnds) if level != startConfig.defaultLevel => bundleOption(s"felix.auto.start.${level}", bnds)
-    }
+    val (allStarts, allInstalls) = getBundlesWithDefaults(startConfig)
+    val defaults = Seq(Constants.FRAMEWORK_BEGINNING_STARTLEVEL -> startConfig.frameworkLevel)
+
+    val installs = doInstall(allInstalls)
+    val starts = doStart(allStarts)
 
     val jvmArgs = (defaults ++ installs ++ starts).map {
       case (n, v) => s"-D$n=$v"
     }
     val startJar = IO.classLocationFile(classOf[AutoProcessor])
     (ForkOptions(runJVMOptions = jvmArgs ++ Seq("-jar", startJar.getAbsolutePath)), Seq(IO.createTemporaryDirectory.getAbsolutePath))
+  }
+
+  def writeLauncher(startConfig: BundleStartConfig, dir: File): (ForkOptions, Seq[String]) = {
+    val (allStarts, allInstalls) = getBundlesWithDefaults(startConfig)
+    val allBundles = allStarts.flatMap(_._2) ++ allInstalls.flatMap(_._2)
+    val (ops, autoAction) = if (allInstalls.isEmpty) {
+      val ops = doStart(allStarts - startConfig.defaultLevel)
+      (ops, "start")
+    } else {
+      (doStart(allStarts) ++ doInstall(allInstalls - startConfig.defaultLevel), "install,start")
+    }
+    val props = new Properties
+    props.putAll(ops.asJava)
+    props.put("felix.auto.deploy.action", autoAction)
+    IO.write(props, "Launcher config", dir / "conf/config.properties")
+
+    val startJar = IO.classLocationFile(classOf[AutoProcessor])
+    val bundleDir = dir / "bundle"
+    IO.copyFile(startJar, dir / "lib" / startJar.getName)
+    IO.copy(allBundles.map {
+      bl => val jar = bl.file
+        if (jar.isDirectory) throw new Error("Bundles must be jars")
+        (jar, bundleDir / jar.getName)
+    })
+    (ForkOptions(), Seq.empty)
   }
 }
