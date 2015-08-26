@@ -242,22 +242,22 @@ object OsgiTasks {
     val deps = osgiDependencies.value
     osgiRepoAdmin.value { repoAdmin =>
       repoAdmin.resolveRequirements(Seq(repo), deps)
-    }.map(_.map(_.file).classpath) valueOr { reasons =>
+    }.map(_.map(_.bl.file).classpath) valueOr { reasons =>
       writeErrors(reasons, streams.value.log)
       sys.error("Error looking up dependencies")
     }
   }
 
-  def osgiStartConfigTask(bundleScope: Scoped) = Def.task[BundleStartConfig] {
+  def osgiStartConfigTask(bundleScope: Scope) = Def.task[BundleStartConfig] {
     val bundles = (osgiBundles in bundleScope).value
-
+    val reqBundles = (osgiRequiredBundles in bundleScope).value
     val runner = osgiRepoAdmin.value
     val libraryRepo = osgiRepository.value
     runner { ra =>
       val devRepo = ra.createRepository(bundles)
       val requirements = osgiRunRequirements.value
 
-      val startConfig = ra.resolveStartConfig(Seq(devRepo, libraryRepo), bundles, requirements, osgiRunLevels.value).valueOr { e =>
+      val startConfig = ra.resolveStartConfig(Seq(devRepo, libraryRepo), reqBundles, requirements, osgiRunLevels.value).valueOr { e =>
         writeErrors(e, streams.value.log)
         sys.error("Failed to lookup start config")
       }
@@ -278,10 +278,20 @@ object OsgiTasks {
   }
 
   lazy val osgiDeployTask = Def.task[(File, ForkOptions, Seq[String])] {
-    val config = (osgiStartConfig in osgiDeploy).value
+    val config = (osgiStartConfig in Deploy).value
     val dir = (artifactPath in osgiDeploy).value
     val (ops, cmdLine) = FelixRunner.writeLauncher(config, dir)
     (dir, ops, cmdLine)
+  }
+
+  lazy val packageDeploymentTask = Def.task[File] {
+    val zipFile = (artifactPath in (Deploy, packageBin)).value
+    val (dir, _, _) = osgiDeploy.value
+    val files = (dir ***) pair(relativeTo(dir), false)
+    System.err.println(files)
+    System.err.println(dir)
+    IO.zip(files, zipFile)
+    zipFile
   }
 
 }

@@ -23,7 +23,7 @@ trait FelixRepoRunner {
 
 object FelixRepositories {
   def runRepoAdmin(bundles: Seq[File], storageDir: File): FelixRepoRunner = {
-    val config = BundleStartConfig(systemPackages = Seq("org.apache.felix.bundlerepository;version=2.1"), defaultStart = bundles.map(b => BundleLocation(b)))
+    val config = BundleStartConfig(systemPackages = Seq("org.apache.felix.bundlerepository;version=2.1"), defaultStart = bundles.map(ResolvedBundleLocation.apply))
     new FelixRepoRunner {
       override def apply[A](f: (FelixRepositories) => A): A = FelixRepositories.synchronized {
         FelixRunner.embed(config, storageDir)(c => f(new FelixRepositories(c)))
@@ -110,12 +110,12 @@ class FelixRepositories(bundleContext: BundleContext) {
     (resolver, helper)
   }
 
-  def resolveRequirements(repos: Seq[Repository], requirements: Seq[OsgiRequirement]): Array[Reason] \/ Seq[BundleLocation] = {
+  def resolveRequirements(repos: Seq[Repository], requirements: Seq[OsgiRequirement]): Array[Reason] \/ Seq[ResolvedBundleLocation] = {
     val (resolver, helper) = setupRequirements(requirements, repos)
     val success = resolver.resolve(Resolver.NO_OPTIONAL_RESOURCES)
     if (success) {
-      val systemBundle = BundleLocation(IO.classLocationFile[BundleContext])
-      (resolver.getRequiredResources.map(r => BundleLocation(new File(URI.create(r.getURI)))).toSeq ++ Seq(systemBundle)).right
+      val systemBundle = ResolvedBundleLocation(IO.classLocationFile[BundleContext])
+      (resolver.getRequiredResources.map(ResolvedBundleLocation.apply).toSeq ++ Seq(systemBundle)).right
     } else resolver.getUnsatisfiedRequirements.left
   }
 
@@ -130,8 +130,9 @@ class FelixRepositories(bundleContext: BundleContext) {
     val success = resolver.resolve(Resolver.NO_OPTIONAL_RESOURCES)
     if (success) {
       val runMap = (resolver.getRequiredResources ++ resolver.getAddedResources).map { r =>
-        val runLevel = bundleLevelMap.get(r.getSymbolicName).getOrElse(0)
-        (runLevel, BundleLocation(new File(URI.create(r.getURI))))
+        val bl = ResolvedBundleLocation(r)
+        val runLevel = if (bl.fragment) 0 else bundleLevelMap.get(r.getSymbolicName).getOrElse(0)
+        (runLevel, bl)
       }.groupBy(_._1).mapValues(_.map(_._2).toSeq)
       BundleStartConfig(started = runMap - 0, defaultStart = runMap.get(0).getOrElse(Seq.empty)).right
     } else resolver.getUnsatisfiedRequirements.left

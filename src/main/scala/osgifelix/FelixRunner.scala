@@ -4,6 +4,7 @@ import java.io.File
 import java.net.URI
 import java.util.Properties
 
+import org.apache.felix.bundlerepository.Resource
 import org.apache.felix.framework.Felix
 import org.apache.felix.main.AutoProcessor
 import org.osgi.framework.wiring.BundleRevision
@@ -17,26 +18,8 @@ import scala.collection.JavaConverters._
  * Created by jolz on 11/08/15.
  */
 
-object BundleLocation {
-  def apply(theFile: File): BundleLocation = new BundleLocation {
-    def file = theFile
-
-    def location = {
-      if (file.isDirectory) {
-        "reference:" + file.toURI.toString
-      } else file.toURI.toString
-    }
-  }
-}
-
-trait BundleLocation {
-  def location: String
-
-  def file: File
-}
-
-case class BundleStartConfig(started: Map[Int, Seq[BundleLocation]] = Map.empty, installed: Map[Int, Seq[BundleLocation]] = Map.empty,
-                             defaultInstall: Seq[BundleLocation] = Seq.empty, defaultStart: Seq[BundleLocation] = Seq.empty,
+case class BundleStartConfig(started: Map[Int, Seq[ResolvedBundleLocation]] = Map.empty, installed: Map[Int, Seq[ResolvedBundleLocation]] = Map.empty,
+                             defaultInstall: Seq[ResolvedBundleLocation] = Seq.empty, defaultStart: Seq[ResolvedBundleLocation] = Seq.empty,
                              systemPackages: Iterable[String] = Seq.empty, frameworkLevel: Int = 1, defaultLevel: Int = 1)
 
 object FelixRunner {
@@ -52,10 +35,10 @@ object FelixRunner {
     val fsl = felix.adapt(classOf[FrameworkStartLevel])
     fsl.setInitialBundleStartLevel(startConfig.defaultLevel)
     val context = felix.getBundleContext
-    def install(bundleLocs: Map[Int, Seq[BundleLocation]], start: Boolean) = {
+    def install(bundleLocs: Map[Int, Seq[ResolvedBundleLocation]], start: Boolean) = {
       bundleLocs.foreach {
         case (level, bundles) => bundles.foreach { b =>
-          val bundle = context.installBundle(b.location)
+          val bundle = context.installBundle(b.bl.location)
           if ((bundle.adapt(classOf[BundleRevision]).getTypes & BundleRevision.TYPE_FRAGMENT) == 0) {
             bundle.adapt(classOf[BundleStartLevel]).setStartLevel(level)
             if (start) bundle.start()
@@ -79,21 +62,23 @@ object FelixRunner {
 
   def getBundlesWithDefaults(startConfig: BundleStartConfig) = {
     val dftLevel = startConfig.defaultLevel
-    val allStarts = startConfig.started.updated(dftLevel, startConfig.started.getOrElse(dftLevel, Seq.empty) ++ startConfig.defaultStart)
-    val allInstalls = startConfig.installed.updated(dftLevel, startConfig.installed.getOrElse(dftLevel, Seq.empty) ++ startConfig.defaultInstall)
-    (allStarts, allInstalls)
+    def withDft(bmap: Map[Int, Seq[ResolvedBundleLocation]], dft: Seq[ResolvedBundleLocation]) =
+      bmap.updated(dftLevel, bmap.getOrElse(dftLevel, Seq.empty) ++ dft).filter(_._2.nonEmpty)
+    (withDft(startConfig.started, startConfig.defaultStart), withDft(startConfig.installed, startConfig.defaultInstall))
   }
 
-  def bundleOption(name: String, bundles: Seq[BundleLocation]) = {
-    name -> bundles.map(_.location).mkString(" ")
+  def bundleOption(name: String, bundles: Seq[ResolvedBundleLocation]) = {
+    name -> bundles.collect {
+      case rbl if !rbl.fragment => (rbl.bl.location)
+    }.mkString(" ")
   }
 
-  def doStart(levels: Map[Int, Seq[BundleLocation]]) = levels.map {
+  def doStart(levels: Map[Int, Seq[ResolvedBundleLocation]]) = levels.map {
     case (level, bnds) => bundleOption(s"felix.auto.start.$level", bnds)
   }
 
-  def doInstall(levels: Map[Int, Seq[BundleLocation]]) = levels.map {
-    case (level, bnds) => bundleOption(s"felix.auto.start.$level", bnds)
+  def doInstall(levels: Map[Int, Seq[ResolvedBundleLocation]]) = levels.map {
+    case (level, bnds) => bundleOption(s"felix.auto.install.$level", bnds)
   }
 
   def forker(startConfig: BundleStartConfig): (ForkOptions, Seq[String]) = {
@@ -110,28 +95,39 @@ object FelixRunner {
     (ForkOptions(runJVMOptions = jvmArgs ++ Seq("-jar", startJar.getAbsolutePath)), Seq(IO.createTemporaryDirectory.getAbsolutePath))
   }
 
+
   def writeLauncher(startConfig: BundleStartConfig, dir: File): (ForkOptions, Seq[String]) = {
-    val (allStarts, allInstalls) = getBundlesWithDefaults(startConfig)
+    IO.delete(dir)
+    val bundleDir = dir / "bundle"
+    def writeBundles(bundles: Seq[ResolvedBundleLocation]) = {
+      bundles.map { rbl =>
+        val jarFile = rbl.bl.file
+        if (jarFile.isDirectory) sys.error("Bundles must be jars")
+        val outJar = bundleDir / jarFile.getName
+        IO.copyFile(jarFile, outJar)
+        rbl.copy(bl = BundleLocation(outJar, "file:${user.dir}/"+dir.toURI.relativize(outJar.toURI).toString))
+      }
+    }
+    val (_allStarts, _allInstalls) = getBundlesWithDefaults(startConfig)
+    val allStarts = _allStarts.mapValues(writeBundles)
+    val allInstalls = _allInstalls.mapValues(writeBundles)
     val allBundles = allStarts.flatMap(_._2) ++ allInstalls.flatMap(_._2)
     val (ops, autoAction) = if (allInstalls.isEmpty) {
       val ops = doStart(allStarts - startConfig.defaultLevel)
-      (ops, "start")
+      (ops, "install,start")
     } else {
-      (doStart(allStarts) ++ doInstall(allInstalls - startConfig.defaultLevel), "install,start")
+      (doStart(allStarts) ++ doInstall(allInstalls - startConfig.defaultLevel), "install")
     }
     val props = new Properties
     props.putAll(ops.asJava)
-    props.put("felix.auto.deploy.action", autoAction)
+    props.put(AutoProcessor.AUTO_DEPLOY_ACTION_PROPERTY, autoAction)
+    props.put(Constants.FRAMEWORK_BEGINNING_STARTLEVEL, startConfig.frameworkLevel.toString)
+    props.put(AutoProcessor.AUTO_DEPLOY_STARTLEVEL_PROPERTY, startConfig.defaultLevel.toString)
     IO.write(props, "Launcher config", dir / "conf/config.properties")
 
     val startJar = IO.classLocationFile(classOf[AutoProcessor])
-    val bundleDir = dir / "bundle"
-    IO.copyFile(startJar, dir / "lib" / startJar.getName)
-    IO.copy(allBundles.map {
-      bl => val jar = bl.file
-        if (jar.isDirectory) throw new Error("Bundles must be jars")
-        (jar, bundleDir / jar.getName)
-    })
-    (ForkOptions(), Seq.empty)
+    val outStartJar = dir / "lib" / startJar.getName
+    IO.copyFile(startJar, outStartJar)
+    (ForkOptions(workingDirectory = Some(dir), runJVMOptions = Seq("-jar", outStartJar.getAbsolutePath)), Seq.empty)
   }
 }

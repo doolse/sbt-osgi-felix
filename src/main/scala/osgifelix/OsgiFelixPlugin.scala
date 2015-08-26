@@ -28,18 +28,18 @@ object OsgiFelixPlugin extends AutoPlugin {
     lazy val osgiDevManifest = taskKey[BundleLocation]("Generate dev bundle")
 
     lazy val osgiBundles = taskKey[Seq[BundleLocation]]("OSGi bundle locations")
+    lazy val osgiRequiredBundles = taskKey[Seq[BundleLocation]]("OSGi bundles required for running")
 
     lazy val osgiRunLevels = settingKey[Map[Int, Seq[BundleRequirement]]]("OSGi run level configuration")
     lazy val osgiRunFrameworkLevel = settingKey[Int]("OSgi runner framework run level")
     lazy val osgiRunDefaultLevel = settingKey[Int]("OSgi runner default run level")
     lazy val osgiRunRequirements = settingKey[Seq[OsgiRequirement]]("OSGi runner resolver requirements")
-    lazy val osgiRunInclusions = taskKey[Seq[BundleLocation]]("OSGi runner auto-started bundles")
 
     lazy val osgiStartConfig = taskKey[BundleStartConfig]("OSGi framework start configuration")
 
-    lazy val osgiRunEnvironment = taskKey[Map[String, String]]("OSGi runner environment variables")
-
     lazy val osgiDeploy = taskKey[(File, ForkOptions, Seq[String])]("Deploy to directory")
+
+    lazy val Deploy = config("deployLauncher")
 
 
     def manifestOnly(symbolicName: String, version: String, headers: Map[String, String]) =
@@ -100,17 +100,19 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRunFrameworkLevel := 1,
       osgiRunRequirements := Seq.empty,
       osgiRunLevels := Map.empty,
-      osgiStartConfig in run <<= osgiStartConfigTask(run),
-      osgiRunInclusions <<= osgiBundles in run,
-      osgiRunEnvironment := Map.empty,
+      osgiRequiredBundles in run <<= osgiBundles in run,
+      osgiStartConfig in run <<= osgiStartConfigTask(ThisScope.in(run.key)),
       run <<= osgiRunTask
     )
 
-    def deploymentSettings = Seq(
-      osgiBundles in osgiDeploy := bundle.all(ScopeFilter(inAnyProject)).value.map(BundleLocation.apply),
-      osgiStartConfig in osgiDeploy <<= osgiStartConfigTask(osgiDeploy),
+    def deploymentSettings = inConfig(Deploy)(Defaults.configSettings) ++ Seq(
+      osgiBundles in Deploy := bundle.all(ScopeFilter(inAnyProject)).value.map(BundleLocation.apply),
+      osgiRequiredBundles in Deploy <<= osgiBundles in Deploy,
+      osgiStartConfig in Deploy <<= osgiStartConfigTask(ThisScope in Deploy),
       artifactPath in osgiDeploy := target.value / "launcher",
-      osgiDeploy <<= osgiDeployTask
+      artifact in (Deploy, packageBin) := artifact.value.copy(`type` = "zip", extension = "zip"),
+      osgiDeploy <<= osgiDeployTask,
+      (packageBin in Deploy) <<= packageDeploymentTask
     )
   }
 
