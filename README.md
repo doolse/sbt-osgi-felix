@@ -20,10 +20,9 @@ So this is where sbt-osgi-felix comes in.
 * Use normal SBT libraryDependencies to create bundles
 * Rewrite/Create Manifests from your dependencies (using BND)
 * Put the dependencies into an OSGi Bundle Repository using [Apache Felix](http://felix.apache.org/)
-* Validate the bundles resolution in the OBR repository
-* Lookup compilation dependencies using the [Felix Bundle Repository](http://felix.apache.org/documentation/subprojects/apache-felix-osgi-bundle-repository.html) resolver
-* Run your code using the [Felix launcher](http://felix.apache.org/documentation/subprojects/apache-felix-framework/apache-felix-framework-launching-and-embedding.html)
-* Deploy your project as a runnable jar
+* Validate the resolution of the bundles in the repository
+* Lookup compilation/run/deployment dependencies using the [Felix Bundle Repository](http://felix.apache.org/documentation/subprojects/apache-felix-osgi-bundle-repository.html) resolver
+* Run and deploy your code using the [Felix launcher](http://felix.apache.org/documentation/subprojects/apache-felix-framework/apache-felix-framework-launching-and-embedding.html)
 
 ## Quickstart
 
@@ -71,7 +70,7 @@ osgiFilterRules := Seq(
 
 Finally, use the felix resolver to select jars for your compile path:
 ```
-osgiDependencies := packageReqs("org.elasticsearch.client")
+osgiDependencies in Compile:= packageReqs("org.elasticsearch.client")
 ```
 
 ## Manifest writing rules

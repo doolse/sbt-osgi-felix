@@ -237,9 +237,9 @@ object OsgiTasks {
     insts
   }
 
-  lazy val osgiDependencyClasspathTask = Def.task[Classpath] {
+  def osgiDependencyClasspathTask(config: ConfigKey) = Def.task[Classpath] {
     val repo = osgiRepository.value
-    val deps = osgiDependencies.value
+    val deps = (osgiDependencies in config).value
     osgiRepoAdmin.value { repoAdmin =>
       repoAdmin.resolveRequirements(Seq(repo), deps)
     }.map(_.map(_.bl.file).classpath) valueOr { reasons =>

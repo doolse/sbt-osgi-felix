@@ -83,14 +83,16 @@ object OsgiFelixPlugin extends AutoPlugin {
     def bundleSettings(repositoryProject: ProjectReference) = Seq(
       osgiDependencies := Seq.empty,
       osgiFilterRules := Seq.empty,
+      osgiDependencyClasspath in Compile <<= osgiDependencyClasspathTask(Compile),
+      osgiDependencyClasspath in Test <<= osgiDependencyClasspathTask(Test),
+      unmanagedClasspath in Compile ++= {
+        scalaInstance.value.allJars().toSeq.classpath ++
+          (osgiDependencyClasspath in Compile).all(ScopeFilter(inDependencies(ThisProject, true, false))).value.flatten ++ (osgiDependencyClasspath in Compile).value
+      },
+      unmanagedClasspath in Test <++= osgiDependencyClasspath in Test,
       osgiRepoAdmin <<= repoAdminTaskRunner,
       osgiDevManifest <<= devManifestTask,
-      osgiDependencyClasspath <<= osgiDependencyClasspathTask,
-      (unmanagedClasspath in Compile) ++= {
-        scalaInstance.value.allJars().toSeq.classpath ++
-          osgiDependencyClasspath.all(ScopeFilter(inDependencies(ThisProject, true, false))).value.flatten ++ osgiDependencyClasspath.value
-      },
-      (managedClasspath in Compile) := Seq(),
+      managedClasspath in Compile := Seq(),
       osgiRepository := (osgiRepository in repositoryProject).value)
 
     def runnerSettings(repositoryProject: ProjectReference) = Seq(
