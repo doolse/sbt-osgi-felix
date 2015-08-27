@@ -163,8 +163,8 @@ object OsgiTasks {
   }
 
   lazy val cachedRepoLookupTask = Def.taskDyn[Repository] {
-    val instructions = osgiInstructions.value
-    val obrDir = osgiRepositoryDir.value
+    val instructions = osgiRepositoryInstructions.value
+    val obrDir = (artifactPath in osgiRepository).value
     val cacheFile = obrDir / "bundle.cache"
     val binDir = obrDir / "bundles"
     val indexFile = obrDir / "index.xml"
@@ -225,13 +225,13 @@ object OsgiTasks {
         case (artifact, file) if typeFilter.accept(artifact.`type`) => (mr.module, artifact, file)
       }
     }
-    val rules = osgiFilterRules.value
-    val pfx = osgiPrefix.value
+    val rules = osgiRepositoryRules.value
+    val pfx = osgiNamePrefix.value
     val (unused, insts) = OsgiTasks.convertToInstructions(pfx, artifacts, rules)
     if (unused.nonEmpty) {
       val logger = streams.value.log
       unused.foreach { r =>
-        logger.warn(s"OSGi filter rule '${r}' is not used")
+        logger.warn(s"OSGi repository rule '${r}' is not used")
       }
     }
     insts

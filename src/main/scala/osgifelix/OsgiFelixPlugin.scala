@@ -14,14 +14,13 @@ import sbt._
 object OsgiFelixPlugin extends AutoPlugin {
 
   object autoImport extends InstructionFilters {
-    lazy val osgiRepository = taskKey[Repository]("Repository for resolving osgi dependencies")
-    lazy val osgiRepositoryDir = settingKey[File]("Directory to store created OBR repository")
+    lazy val osgiRepository = taskKey[Repository]("Repository for resolving OSGi dependencies")
     lazy val osgiRepositoryConfigurations = settingKey[ConfigurationFilter]("Ivy configurations to include in OBR repository")
-    lazy val osgiFilterRules = settingKey[Seq[InstructionFilter]]("Filters for generating BND instructions")
-    lazy val osgiInstructions = taskKey[Seq[BundleInstructions]]("Instructions for BND")
+    lazy val osgiRepositoryRules = settingKey[Seq[InstructionFilter]]("Filters for generating BND instructions")
+    lazy val osgiRepositoryInstructions = taskKey[Seq[BundleInstructions]]("Instructions for building the bundles in the OBR repository")
     lazy val osgiRepoAdmin = settingKey[FelixRepoRunner]("Repository admin interface")
     lazy val osgiExtraJDKPackages = settingKey[Seq[String]]("Extra JDK packages for framework classpath")
-    lazy val osgiPrefix = settingKey[String]("Prefix for generated bundle names")
+    lazy val osgiNamePrefix = settingKey[String]("Prefix for generated bundle names")
 
     lazy val osgiDependencies = settingKey[Seq[OsgiRequirement]]("OSGi dependencies")
     lazy val osgiDependencyClasspath = taskKey[Classpath]("Classpath from OSGi dependencies")
@@ -49,7 +48,7 @@ object OsgiFelixPlugin extends AutoPlugin {
 
     def bundleReqs(name: String*) = name.map(n => BundleRequirement(n)).toSeq
 
-    def bundleReq(name: String, version: Option[String] = None) = BundleRequirement(name, version.map(new VersionRange(_)))
+    def bundleReq(name: String, version: Option[String]) = BundleRequirement(name, version.map(new VersionRange(_)))
 
     def packageReq(name: String, version: Option[String]) = PackageRequirement(name, version.map(new VersionRange(_)))
 
@@ -62,10 +61,10 @@ object OsgiFelixPlugin extends AutoPlugin {
     lazy val repositorySettings = Seq(
       osgiExtraJDKPackages := Seq("sun.reflect", "sun.reflect.generics.reflectiveObjects", "com.sun.jna", "com.sun", "sun.misc", "com.sun.jdi", "com.sun.jdi.connect",
         "com.sun.jdi.event", "com.sun.jdi.request", "sun.nio.ch", "com.sun.javadoc", "com.sun.tools.javadoc"),
-      osgiInstructions := {
+      osgiRepositoryInstructions := {
         val extra = osgiExtraJDKPackages.value
         val extBundle = if (extra.nonEmpty) {
-          val bundleName = osgiPrefix.value + "jdkext"
+          val bundleName = osgiNamePrefix.value + "jdkext"
           Seq(manifestOnly(bundleName, "1.0.0", Map(
             "Fragment-Host" -> "system.bundle; extension:=framework",
             "Export-Package" -> extra.mkString(",")
@@ -73,16 +72,16 @@ object OsgiFelixPlugin extends AutoPlugin {
         } else Seq()
         extBundle ++ createInstructionsTask.value
       },
-      osgiRepositoryDir <<= target,
+      artifactPath in osgiRepository <<= target,
       osgiRepositoryConfigurations := configurationFilter(Compile.name),
       osgiRepoAdmin <<= repoAdminTaskRunner,
       osgiRepository <<= cachedRepoLookupTask,
-      osgiPrefix := name.value + "."
+      osgiNamePrefix := name.value + "."
     )
 
     def bundleSettings(repositoryProject: ProjectReference) = Seq(
       osgiDependencies := Seq.empty,
-      osgiFilterRules := Seq.empty,
+      osgiRepositoryRules := Seq.empty,
       osgiDependencyClasspath in Compile <<= osgiDependencyClasspathTask(Compile),
       osgiDependencyClasspath in Test <<= osgiDependencyClasspathTask(Test),
       unmanagedClasspath in Compile ++= {
