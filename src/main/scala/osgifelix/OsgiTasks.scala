@@ -162,16 +162,16 @@ object OsgiTasks {
     }
   }
 
-  lazy val cachedRepoLookupTask = Def.taskDyn[Repository] {
+  lazy val cachedRepoLookupTask = Def.taskDyn[Seq[Repository]] {
     val instructions = osgiRepositoryInstructions.value
-    val obrDir = (artifactPath in osgiRepository).value
+    val obrDir = (artifactPath in (Compile, osgiRepositories)).value
     val cacheFile = obrDir / "bundle.cache"
     val binDir = obrDir / "bundles"
     val indexFile = obrDir / "index.xml"
     val cacheData = BndManifestGenerator.serialize(instructions)
     if (cacheFile.exists() && indexFile.exists() && IO.read(cacheFile) == cacheData) {
       Def.task {
-        osgiRepoAdmin.value(_.loadRepository(indexFile))
+        Seq(osgiRepoAdmin.value(_.loadRepository(indexFile)))
       }
     } else Def.task {
       IO.delete(binDir)
@@ -191,7 +191,7 @@ object OsgiTasks {
         {
           IO.write(cacheFile, cacheData)
           repoAdmin.writeRepository(repo, indexFile)
-          repo
+          Seq(repo)
         } else {
           writeErrors(reasons, logger)
           sys.error("Failed consistency check")
@@ -238,26 +238,32 @@ object OsgiTasks {
   }
 
   def osgiDependencyClasspathTask(config: ConfigKey) = Def.task[Classpath] {
-    val repo = osgiRepository.value
+    val repos = (osgiRepositories in config).value
     val deps = (osgiDependencies in config).value
     osgiRepoAdmin.value { repoAdmin =>
-      repoAdmin.resolveRequirements(Seq(repo), deps)
+      repoAdmin.resolveRequirements(repos, deps)
     }.map(_.map(_.bl.file).classpath) valueOr { reasons =>
       writeErrors(reasons, streams.value.log)
       sys.error("Error looking up dependencies")
     }
   }
 
-  def osgiStartConfigTask(bundleScope: Scope) = Def.task[BundleStartConfig] {
+  def osgiApplicationRepos(bundleScope: Scope) = Def.task[Repository] {
+    val runner = osgiRepoAdmin.value
     val bundles = (osgiBundles in bundleScope).value
+    runner {
+      ra => ra.createRepository(bundles)
+    }
+  }
+
+  def osgiStartConfigTask(bundleScope: Scope) = Def.task[BundleStartConfig] {
     val reqBundles = (osgiRequiredBundles in bundleScope).value
     val runner = osgiRepoAdmin.value
-    val libraryRepo = osgiRepository.value
+    val repos = (osgiRepositories in bundleScope).value
     runner { ra =>
-      val devRepo = ra.createRepository(bundles)
-      val requirements = osgiRunRequirements.value
+      val requirements = (osgiDependencies in bundleScope).value
 
-      val startConfig = ra.resolveStartConfig(Seq(devRepo, libraryRepo), reqBundles, requirements, osgiRunLevels.value, osgiRunDefaultLevel.value).valueOr { e =>
+      val startConfig = ra.resolveStartConfig(repos, reqBundles, requirements, osgiRunLevels.value, osgiRunDefaultLevel.value).valueOr { e =>
         writeErrors(e, streams.value.log)
         sys.error("Failed to lookup start config")
       }

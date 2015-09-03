@@ -14,7 +14,10 @@ import sbt._
 object OsgiFelixPlugin extends AutoPlugin {
 
   object autoImport extends InstructionFilters {
-    lazy val osgiRepository = taskKey[Repository]("Repository for resolving OSGi dependencies")
+    lazy val osgiRepositories = taskKey[Seq[Repository]]("Repositories for resolving OSGi dependencies against")
+    lazy val osgiDependencies = settingKey[Seq[OsgiRequirement]]("OSGi package or bundle dependencies")
+    lazy val osgiDependencyClasspath = taskKey[Classpath]("Classpath from OSGi dependencies")
+
     lazy val osgiRepositoryConfigurations = settingKey[ConfigurationFilter]("Ivy configurations to include in OBR repository")
     lazy val osgiRepositoryRules = settingKey[Seq[InstructionFilter]]("Filters for generating BND instructions")
     lazy val osgiRepositoryInstructions = taskKey[Seq[BundleInstructions]]("Instructions for building the bundles in the OBR repository")
@@ -22,8 +25,6 @@ object OsgiFelixPlugin extends AutoPlugin {
     lazy val osgiExtraJDKPackages = settingKey[Seq[String]]("Extra JDK packages for framework classpath")
     lazy val osgiNamePrefix = settingKey[String]("Prefix for generated bundle names")
 
-    lazy val osgiDependencies = settingKey[Seq[OsgiRequirement]]("OSGi dependencies")
-    lazy val osgiDependencyClasspath = taskKey[Classpath]("Classpath from OSGi dependencies")
     lazy val osgiDevManifest = taskKey[BundleLocation]("Generate dev bundle")
 
     lazy val osgiBundles = taskKey[Seq[BundleLocation]]("OSGi bundle locations")
@@ -32,7 +33,6 @@ object OsgiFelixPlugin extends AutoPlugin {
     lazy val osgiRunLevels = settingKey[Map[Int, Seq[BundleRequirement]]]("OSGi run level configuration")
     lazy val osgiRunFrameworkLevel = settingKey[Int]("OSGi framework run level")
     lazy val osgiRunDefaultLevel = settingKey[Int]("OSGi default run level")
-    lazy val osgiRunRequirements = settingKey[Seq[OsgiRequirement]]("OSGi runtime resolver requirements")
 
     lazy val osgiStartConfig = taskKey[BundleStartConfig]("OSGi framework start configuration")
 
@@ -73,15 +73,17 @@ object OsgiFelixPlugin extends AutoPlugin {
         } else Seq()
         extBundle ++ createInstructionsTask.value
       },
-      artifactPath in osgiRepository <<= target,
+      artifactPath in (Compile, osgiRepositories) <<= target,
       osgiRepositoryConfigurations := configurationFilter(Compile.name),
       osgiRepoAdmin <<= repoAdminTaskRunner,
-      osgiRepository <<= cachedRepoLookupTask,
+      osgiRepositories in Compile <<= cachedRepoLookupTask,
+      osgiRepositories in Test <<= osgiRepositories in Compile,
       osgiNamePrefix := name.value + "."
     )
 
     def bundleSettings(repositoryProject: ProjectReference) = Seq(
-      osgiDependencies := Seq.empty,
+      osgiDependencies in Compile := Seq.empty,
+      osgiDependencies in Test := Seq.empty,
       osgiRepositoryRules := Seq.empty,
       osgiDependencyClasspath in Compile <<= osgiDependencyClasspathTask(Compile),
       osgiDependencyClasspath in Test <<= osgiDependencyClasspathTask(Test),
@@ -93,19 +95,21 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRepoAdmin <<= repoAdminTaskRunner,
       osgiDevManifest <<= devManifestTask,
       managedClasspath in Compile := Seq(),
-      osgiRepository := (osgiRepository in repositoryProject).value)
+      osgiRepositories in Compile <<= osgiRepositories in (repositoryProject, Compile))
 
     def runnerSettings(repositoryProject: ProjectReference, bundlesScope: ScopeFilter, launching: Boolean) = Seq(
-      osgiRepository := (osgiRepository in repositoryProject).value,
+      osgiRepositories in run := (osgiRepositories in Compile).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,
       osgiBundles in run := osgiDevManifest.all(bundlesScope).value,
       osgiRunDefaultLevel := 1,
       osgiRunFrameworkLevel := 1,
-      osgiRunRequirements := Seq.empty,
+      osgiDependencies in run := Seq.empty,
       osgiRunLevels := Map.empty,
       osgiRequiredBundles in run <<= osgiBundles in run,
       osgiStartConfig in run <<= osgiStartConfigTask(ThisScope.in(run.key)),
       run <<= osgiRunTask
     ) ++ (if (launching) inConfig(DeployLauncher)(Defaults.configSettings ++ Seq(
+      osgiRepositories := (osgiRepositories in Compile).value :+ osgiApplicationRepos(ThisScope in DeployLauncher).value,
+      osgiDependencies <<= osgiDependencies in run,
       osgiBundles := bundle.all(bundlesScope).value.map(BundleLocation.apply),
       osgiRequiredBundles <<= osgiBundles in DeployLauncher,
       osgiStartConfig <<= osgiStartConfigTask(ThisScope in DeployLauncher),
