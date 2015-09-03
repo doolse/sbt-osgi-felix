@@ -18,22 +18,22 @@ import scala.collection.JavaConverters._
  * Created by jolz on 11/08/15.
  */
 
-case class BundleStartConfig(started: Map[Int, Seq[ResolvedBundleLocation]] = Map.empty, installed: Map[Int, Seq[ResolvedBundleLocation]] = Map.empty,
-                             defaultInstall: Seq[ResolvedBundleLocation] = Seq.empty, defaultStart: Seq[ResolvedBundleLocation] = Seq.empty,
-                             systemPackages: Iterable[String] = Seq.empty, frameworkLevel: Int = 1, defaultLevel: Int = 1)
+case class BundleStartConfig(start: Map[Int, Seq[ResolvedBundleLocation]] = Map.empty,
+                             install: Map[Int, Seq[ResolvedBundleLocation]] = Map.empty,
+                             extraSystemPackages: Iterable[String] = Seq.empty, frameworkStartLevel: Int = 1)
 
 object FelixRunner {
   def embed[A](startConfig: BundleStartConfig, storageDir: File)(f: BundleContext => A): A = {
-    val sysO = startConfig.systemPackages.headOption.map(_ => startConfig.systemPackages.mkString(","))
+    val sysO = startConfig.extraSystemPackages.headOption.map(_ => startConfig.extraSystemPackages.mkString(","))
     val configMap: Map[String, String] = Seq(
       Some(Constants.FRAMEWORK_STORAGE -> storageDir.getAbsolutePath),
       sysO.map(Constants.FRAMEWORK_SYSTEMPACKAGES_EXTRA -> _),
-      Some(Constants.FRAMEWORK_BEGINNING_STARTLEVEL -> startConfig.frameworkLevel.toString)
+      Some(Constants.FRAMEWORK_BEGINNING_STARTLEVEL -> startConfig.frameworkStartLevel.toString)
     ).flatten.toMap
     val felix = new Felix(configMap.asJava)
     felix.init
     val fsl = felix.adapt(classOf[FrameworkStartLevel])
-    fsl.setInitialBundleStartLevel(startConfig.defaultLevel)
+    fsl.setInitialBundleStartLevel(startConfig.frameworkStartLevel)
     val context = felix.getBundleContext
     def install(bundleLocs: Map[Int, Seq[ResolvedBundleLocation]], start: Boolean) = {
       bundleLocs.foreach {
@@ -46,10 +46,8 @@ object FelixRunner {
         }
       }
     }
-    install(startConfig.installed, false)
-    install(startConfig.started, true)
-    install(Map(startConfig.defaultLevel -> startConfig.defaultInstall), false)
-    install(Map(startConfig.defaultLevel -> startConfig.defaultStart), true)
+    install(startConfig.install, false)
+    install(startConfig.start, true)
     felix.start()
     try {
       f(context)
@@ -58,13 +56,6 @@ object FelixRunner {
       felix.stop()
       felix.waitForStop(10000L)
     }
-  }
-
-  def getBundlesWithDefaults(startConfig: BundleStartConfig) = {
-    val dftLevel = startConfig.defaultLevel
-    def withDft(bmap: Map[Int, Seq[ResolvedBundleLocation]], dft: Seq[ResolvedBundleLocation]) =
-      bmap.updated(dftLevel, bmap.getOrElse(dftLevel, Seq.empty) ++ dft).filter(_._2.nonEmpty)
-    (withDft(startConfig.started, startConfig.defaultStart), withDft(startConfig.installed, startConfig.defaultInstall))
   }
 
   def bundleOption(name: String, bundles: Seq[ResolvedBundleLocation]) = {
@@ -82,8 +73,8 @@ object FelixRunner {
   }
 
   def forker(startConfig: BundleStartConfig): (ForkOptions, Seq[String]) = {
-    val (allStarts, allInstalls) = getBundlesWithDefaults(startConfig)
-    val defaults = Seq(Constants.FRAMEWORK_BEGINNING_STARTLEVEL -> startConfig.frameworkLevel)
+    val (allStarts, allInstalls) = (startConfig.start, startConfig.install)
+    val defaults = Seq(Constants.FRAMEWORK_BEGINNING_STARTLEVEL -> startConfig.frameworkStartLevel)
 
     val installs = doInstall(allInstalls)
     val starts = doStart(allStarts)
@@ -108,21 +99,26 @@ object FelixRunner {
         rbl.copy(bl = BundleLocation(outJar, "file:${user.dir}/"+dir.toURI.relativize(outJar.toURI).toString))
       }
     }
-    val (_allStarts, _allInstalls) = getBundlesWithDefaults(startConfig)
+    val (_allStarts, _allInstalls) = (startConfig.start, startConfig.install)
+    val (defaultLevel, _) = (_allStarts.keySet ++ _allInstalls.keySet).foldLeft((1, -1)) {
+      case ((defaultRunLevel, max), runLevel) =>
+        val numBundles = _allStarts.getOrElse(runLevel, Seq.empty).size + _allInstalls.getOrElse(runLevel, Seq.empty).size
+        if (numBundles > max) (runLevel, numBundles) else (defaultRunLevel, max)
+    }
     val allStarts = _allStarts.mapValues(writeBundles)
     val allInstalls = _allInstalls.mapValues(writeBundles)
     val allBundles = allStarts.flatMap(_._2) ++ allInstalls.flatMap(_._2)
     val (ops, autoAction) = if (allInstalls.isEmpty) {
-      val ops = doStart(allStarts - startConfig.defaultLevel)
+      val ops = doStart(allStarts - defaultLevel)
       (ops, "install,start")
     } else {
-      (doStart(allStarts) ++ doInstall(allInstalls - startConfig.defaultLevel), "install")
+      (doStart(allStarts) ++ doInstall(allInstalls - defaultLevel), "install")
     }
     val props = new Properties
     props.putAll(ops.asJava)
     props.put(AutoProcessor.AUTO_DEPLOY_ACTION_PROPERTY, autoAction)
-    props.put(Constants.FRAMEWORK_BEGINNING_STARTLEVEL, startConfig.frameworkLevel.toString)
-    props.put(AutoProcessor.AUTO_DEPLOY_STARTLEVEL_PROPERTY, startConfig.defaultLevel.toString)
+    props.put(Constants.FRAMEWORK_BEGINNING_STARTLEVEL, startConfig.frameworkStartLevel.toString)
+    props.put(AutoProcessor.AUTO_DEPLOY_STARTLEVEL_PROPERTY, defaultLevel.toString)
     IO.write(props, "Launcher config", dir / "conf/config.properties")
 
     val startJar = IO.classLocationFile(classOf[AutoProcessor])

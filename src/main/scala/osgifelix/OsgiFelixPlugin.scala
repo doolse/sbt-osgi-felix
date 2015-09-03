@@ -30,15 +30,15 @@ object OsgiFelixPlugin extends AutoPlugin {
     lazy val osgiRequiredBundles = taskKey[Seq[BundleLocation]]("OSGi bundles required for running")
 
     lazy val osgiRunLevels = settingKey[Map[Int, Seq[BundleRequirement]]]("OSGi run level configuration")
-    lazy val osgiRunFrameworkLevel = settingKey[Int]("OSgi runner framework run level")
-    lazy val osgiRunDefaultLevel = settingKey[Int]("OSgi runner default run level")
-    lazy val osgiRunRequirements = settingKey[Seq[OsgiRequirement]]("OSGi runner resolver requirements")
+    lazy val osgiRunFrameworkLevel = settingKey[Int]("OSGi framework run level")
+    lazy val osgiRunDefaultLevel = settingKey[Int]("OSGi default run level")
+    lazy val osgiRunRequirements = settingKey[Seq[OsgiRequirement]]("OSGi runtime resolver requirements")
 
     lazy val osgiStartConfig = taskKey[BundleStartConfig]("OSGi framework start configuration")
 
-    lazy val osgiDeploy = taskKey[(File, ForkOptions, Seq[String])]("Deploy to directory")
+    lazy val osgiDeploy = taskKey[(File, ForkOptions, Seq[String])]("Deploy an OSGi launcher to directory")
 
-    lazy val Deploy = config("deployLauncher")
+    lazy val DeployLauncher = config("deployLauncher")
 
 
     def manifestOnly(symbolicName: String, version: String, headers: Map[String, String]) =
@@ -56,7 +56,8 @@ object OsgiFelixPlugin extends AutoPlugin {
 
     import OsgiTasks._
 
-    lazy val defaultSingleProjectSettings = repositorySettings ++ bundleSettings(ThisProject) ++ runnerSettings(ThisProject) ++ defaultOsgiSettings
+    lazy val defaultSingleProjectSettings = repositorySettings ++ bundleSettings(ThisProject) ++
+      runnerSettings(ThisProject, ScopeFilter(inProjects(ThisProject)), true) ++ defaultOsgiSettings
 
     lazy val repositorySettings = Seq(
       osgiExtraJDKPackages := Seq("sun.reflect", "sun.reflect.generics.reflectiveObjects", "com.sun.jna", "com.sun", "sun.misc", "com.sun.jdi", "com.sun.jdi.connect",
@@ -94,9 +95,9 @@ object OsgiFelixPlugin extends AutoPlugin {
       managedClasspath in Compile := Seq(),
       osgiRepository := (osgiRepository in repositoryProject).value)
 
-    def runnerSettings(repositoryProject: ProjectReference) = Seq(
+    def runnerSettings(repositoryProject: ProjectReference, bundlesScope: ScopeFilter, launching: Boolean) = Seq(
       osgiRepository := (osgiRepository in repositoryProject).value,
-      osgiBundles in run := Seq(osgiDevManifest.value),
+      osgiBundles in run := osgiDevManifest.all(bundlesScope).value,
       osgiRunDefaultLevel := 1,
       osgiRunFrameworkLevel := 1,
       osgiRunRequirements := Seq.empty,
@@ -104,17 +105,17 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRequiredBundles in run <<= osgiBundles in run,
       osgiStartConfig in run <<= osgiStartConfigTask(ThisScope.in(run.key)),
       run <<= osgiRunTask
-    )
-
-    def deploymentSettings = inConfig(Deploy)(Defaults.configSettings) ++ Seq(
-      osgiBundles in Deploy := bundle.all(ScopeFilter(inAnyProject)).value.map(BundleLocation.apply),
-      osgiRequiredBundles in Deploy <<= osgiBundles in Deploy,
-      osgiStartConfig in Deploy <<= osgiStartConfigTask(ThisScope in Deploy),
-      artifactPath in osgiDeploy := target.value / "launcher",
-      artifact in (Deploy, packageBin) := artifact.value.copy(`type` = "zip", extension = "zip"),
-      osgiDeploy <<= osgiDeployTask,
-      (packageBin in Deploy) <<= packageDeploymentTask
-    )
+    ) ++ (if (launching) inConfig(DeployLauncher)(Defaults.configSettings ++ Seq(
+      osgiBundles := bundle.all(bundlesScope).value.map(BundleLocation.apply),
+      osgiRequiredBundles <<= osgiBundles in DeployLauncher,
+      osgiStartConfig <<= osgiStartConfigTask(ThisScope in DeployLauncher),
+      artifact in packageBin := artifact.value.copy(`type` = "zip", extension = "zip"),
+      packageBin <<= packageDeploymentTask)) ++
+      Seq(
+        artifactPath in osgiDeploy := target.value / "launcher",
+        osgiDeploy <<= osgiDeployTask
+      )
+    else Seq.empty)
   }
 
 }

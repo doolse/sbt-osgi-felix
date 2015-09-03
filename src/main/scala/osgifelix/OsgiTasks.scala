@@ -13,7 +13,7 @@ import org.osgi.framework.launch.Framework
 import sbt._
 import scalaz.Id.Id
 import Keys._
-import OsgiFelixPlugin.autoImport._
+import osgifelix.OsgiFelixPlugin.autoImport._
 
 /**
  * Created by jolz on 13/08/15.
@@ -257,11 +257,11 @@ object OsgiTasks {
       val devRepo = ra.createRepository(bundles)
       val requirements = osgiRunRequirements.value
 
-      val startConfig = ra.resolveStartConfig(Seq(devRepo, libraryRepo), reqBundles, requirements, osgiRunLevels.value).valueOr { e =>
+      val startConfig = ra.resolveStartConfig(Seq(devRepo, libraryRepo), reqBundles, requirements, osgiRunLevels.value, osgiRunDefaultLevel.value).valueOr { e =>
         writeErrors(e, streams.value.log)
         sys.error("Failed to lookup start config")
       }
-      startConfig.copy(frameworkLevel = osgiRunFrameworkLevel.value, defaultLevel = osgiRunDefaultLevel.value)
+      startConfig.copy(frameworkStartLevel = osgiRunFrameworkLevel.value)
     }
   }
 
@@ -278,18 +278,16 @@ object OsgiTasks {
   }
 
   lazy val osgiDeployTask = Def.task[(File, ForkOptions, Seq[String])] {
-    val config = (osgiStartConfig in Deploy).value
+    val config = (osgiStartConfig in DeployLauncher).value
     val dir = (artifactPath in osgiDeploy).value
     val (ops, cmdLine) = FelixRunner.writeLauncher(config, dir)
     (dir, ops, cmdLine)
   }
 
   lazy val packageDeploymentTask = Def.task[File] {
-    val zipFile = (artifactPath in (Deploy, packageBin)).value
+    val zipFile = (artifactPath in (DeployLauncher, packageBin)).value
     val (dir, _, _) = osgiDeploy.value
     val files = (dir ***) pair(relativeTo(dir), false)
-    System.err.println(files)
-    System.err.println(dir)
     IO.zip(files, zipFile)
     zipFile
   }

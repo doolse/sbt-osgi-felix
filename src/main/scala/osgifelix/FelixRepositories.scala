@@ -23,7 +23,7 @@ trait FelixRepoRunner {
 
 object FelixRepositories {
   def runRepoAdmin(bundles: Seq[File], storageDir: File): FelixRepoRunner = {
-    val config = BundleStartConfig(systemPackages = Seq("org.apache.felix.bundlerepository;version=2.1"), defaultStart = bundles.map(ResolvedBundleLocation.apply))
+    val config = BundleStartConfig(extraSystemPackages = Seq("org.apache.felix.bundlerepository;version=2.1"), start = Map(1 -> bundles.map(ResolvedBundleLocation.apply)))
     new FelixRepoRunner {
       override def apply[A](f: (FelixRepositories) => A): A = FelixRepositories.synchronized {
         FelixRunner.embed(config, storageDir)(c => f(new FelixRepositories(c)))
@@ -120,7 +120,7 @@ class FelixRepositories(bundleContext: BundleContext) {
   }
 
   def resolveStartConfig(repos: Seq[Repository], resources: Seq[BundleLocation], requirements: Seq[OsgiRequirement],
-                         startBundles: Map[Int, Seq[BundleRequirement]]): Array[Reason] \/ BundleStartConfig = {
+                         startBundles: Map[Int, Seq[BundleRequirement]], defaultStartLevel: Int): Array[Reason] \/ BundleStartConfig = {
     val allReq = requirements ++ startBundles.flatMap(_._2)
     val (resolver, helper) = setupRequirements(allReq, repos)
     resourcesFromLocations(resources).foreach(resolver.add)
@@ -131,10 +131,10 @@ class FelixRepositories(bundleContext: BundleContext) {
     if (success) {
       val runMap = (resolver.getRequiredResources ++ resolver.getAddedResources).map { r =>
         val bl = ResolvedBundleLocation(r)
-        val runLevel = if (bl.fragment) 0 else bundleLevelMap.get(r.getSymbolicName).getOrElse(0)
+        val runLevel = if (bl.fragment) defaultStartLevel else bundleLevelMap.get(r.getSymbolicName).getOrElse(defaultStartLevel)
         (runLevel, bl)
       }.groupBy(_._1).mapValues(_.map(_._2).toSeq)
-      BundleStartConfig(started = runMap - 0, defaultStart = runMap.get(0).getOrElse(Seq.empty)).right
+      BundleStartConfig(start = runMap).right
     } else resolver.getUnsatisfiedRequirements.left
 
   }
