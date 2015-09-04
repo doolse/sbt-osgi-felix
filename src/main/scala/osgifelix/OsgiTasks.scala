@@ -164,7 +164,7 @@ object OsgiTasks {
 
   lazy val cachedRepoLookupTask = Def.taskDyn[Seq[Repository]] {
     val instructions = osgiRepositoryInstructions.value
-    val obrDir = (artifactPath in (Compile, osgiRepositories)).value
+    val obrDir = (artifactPath in osgiRepositories).value
     val cacheFile = obrDir / "bundle.cache"
     val binDir = obrDir / "bundles"
     val indexFile = obrDir / "index.xml"

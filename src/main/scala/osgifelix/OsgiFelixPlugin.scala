@@ -73,11 +73,10 @@ object OsgiFelixPlugin extends AutoPlugin {
         } else Seq()
         extBundle ++ createInstructionsTask.value
       },
-      artifactPath in (Compile, osgiRepositories) <<= target,
+      artifactPath in osgiRepositories := target.value,
       osgiRepositoryConfigurations := configurationFilter(Compile.name),
       osgiRepoAdmin <<= repoAdminTaskRunner,
-      osgiRepositories in Compile <<= cachedRepoLookupTask,
-      osgiRepositories in Test <<= osgiRepositories in Compile,
+      osgiRepositories <<= cachedRepoLookupTask,
       osgiNamePrefix := name.value + "."
     )
 
@@ -95,7 +94,7 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRepoAdmin <<= repoAdminTaskRunner,
       osgiDevManifest <<= devManifestTask,
       managedClasspath in Compile := Seq(),
-      osgiRepositories in Compile <<= osgiRepositories in (repositoryProject, Compile))
+      osgiRepositories := (osgiRepositories in repositoryProject).value)
 
     def runnerSettings(repositoryProject: ProjectReference, bundlesScope: ScopeFilter, launching: Boolean) = Seq(
       osgiRepositories in run := (osgiRepositories in Compile).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,
@@ -104,14 +103,14 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRunFrameworkLevel := 1,
       osgiDependencies in run := Seq.empty,
       osgiRunLevels := Map.empty,
-      osgiRequiredBundles in run <<= osgiBundles in run,
+      osgiRequiredBundles in run := (osgiBundles in run).value,
       osgiStartConfig in run <<= osgiStartConfigTask(ThisScope.in(run.key)),
       run <<= osgiRunTask
     ) ++ (if (launching) inConfig(DeployLauncher)(Defaults.configSettings ++ Seq(
       osgiRepositories := (osgiRepositories in Compile).value :+ osgiApplicationRepos(ThisScope in DeployLauncher).value,
-      osgiDependencies <<= osgiDependencies in run,
+      osgiDependencies := (osgiDependencies in run).value,
       osgiBundles := bundle.all(bundlesScope).value.map(BundleLocation.apply),
-      osgiRequiredBundles <<= osgiBundles in DeployLauncher,
+      osgiRequiredBundles := (osgiBundles in DeployLauncher).value,
       osgiStartConfig <<= osgiStartConfigTask(ThisScope in DeployLauncher),
       artifact in packageBin := artifact.value.copy(`type` = "zip", extension = "zip"),
       packageBin <<= packageDeploymentTask)) ++
