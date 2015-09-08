@@ -74,7 +74,7 @@ Rather than directly depending on the maven artifacts you define using `libraryD
 an OSGi Bundle Repository created by felix. 
 
 ```scala
-lazy val osgiRepository = taskKey[Repository]("Repository for resolving OSGi dependencies")
+lazy val osgiRepositories = taskKey[Seq[Repository]]("Repository for resolving OSGi dependencies")
 ```
 The default behaviour of this task is to take the ordered list of instructions from:
 ```scala
@@ -185,15 +185,15 @@ lazy val osgiStartConfig = taskKey[BundleStartConfig]("OSGi framework start conf
 The `run` task itself uses `osgiStartConfig` scope to the run task itself, however by default this is built by the 
 following algorithm, *Note: wherever scoped is mentioned we're talking about the `run` task's scope*:
 
-* Create a resolver from the `osgiRepository` and bundles specified in the *scoped* `osgiBundles` task.
-* Resolve all required bundles by resolving *scoped* `osgiRequiredBundles` and project level `osgiRunRequirements`.
+* Create a resolver from the `osgiRepositories` and bundles specified in the *scoped* `osgiBundles` task.
+* Resolve all required bundles by resolving *scoped* `osgiRequiredBundles` and `osgiDependencies`.
 * Use the default run level from `osgiDefaultLevel` for bundles unless overridden in `osgiRunLevels`.
 * Set the framework start run level using `osgiRunFrameworkLevel`.
 
 #### Advanced config example
 
 ```scala
-osgiRunRequirements := Seq(fragmentsFor("slf4j.api"))
+osgiDependencies in run := Seq(fragmentsFor("slf4j.api"))
 osgiRunFrameworkLevel := 6
 osgiRunDefaultLevel := 3
 envVars in run := Map("zookeeper.location" -> "localhost:2181",
