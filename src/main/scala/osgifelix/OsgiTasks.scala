@@ -272,13 +272,16 @@ object OsgiTasks {
   }
 
   lazy val osgiRunTask = Def.inputTask[Unit] {
+      val log = (streams in run).value.log
       val startConfig = (osgiStartConfig in run).value
       val props = (envVars in run).value
       props.foreach {
         case (n, v) => System.setProperty(n, v)
       }
 
+      log.info("Launching embedded OSGi framework...")
       FelixRunner.embed(startConfig, IO.createTemporaryDirectory) {
+      log.info("Waiting for framework to stop")
         _.getBundle(0).adapt(classOf[Framework]).waitForStop(0L)
       }
   }

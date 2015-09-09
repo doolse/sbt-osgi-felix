@@ -173,7 +173,7 @@ lazy val osgiRequiredBundles = taskKey[Seq[BundleLocation]]("OSGi bundles requir
 lazy val osgiRunLevels = settingKey[Map[Int, Seq[BundleRequirement]]]("OSGi run level configuration")
 lazy val osgiRunFrameworkLevel = settingKey[Int]("OSGi framework run level")
 lazy val osgiRunDefaultLevel = settingKey[Int]("OSGi default run level")
-lazy val osgiRunRequirements = settingKey[Seq[OsgiRequirement]]("OSGi runtime resolver requirements")
+lazy val osgiDependencies = settingKey[Seq[OsgiRequirement]]("OSGi dependencies")
 
 case class BundleStartConfig(start: Map[Int, Seq[ResolvedBundleLocation]],
                              install: Map[Int, Seq[ResolvedBundleLocation]],
@@ -256,4 +256,41 @@ set of sources!). So generally what you will want is a project layout like this:
   
 #### Sample advanced config
 
-TODO
+`build.sbt`
+
+```scala
+lazy val root = project in file(".")
+
+lazy val core = project.in(file("core")).settings(bundleSettings(root): _*)
+
+lazy val frontend = project.in(file("frontend")).dependsOn(core).settings(bundleSettings(root): _*)
+
+repositoryAndRunnerSettings(core, frontend)
+
+libraryDependencies ++= Seq(
+  "org.slf4j" % "slf4j-simple" % "1.7.12",
+  "org.slf4j" % "slf4j-api" % "1.7.12")
+
+```
+
+`core/build.sbt`
+
+```scala
+import com.typesafe.sbt.osgi.OsgiKeys._
+
+osgiDependencies in Compile := packageReqs("org.slf4j")
+
+exportPackage += "com.doolse.core"
+```
+
+`frontend/build.sbt`
+
+```scala
+import com.typesafe.sbt.osgi.OsgiKeys._
+
+osgiDependencies in Compile := packageReqs("org.osgi.framework")
+
+bundleActivator := Some("com.doolse.frontend.Activator")
+
+exportPackage += "com.doolse.frontend"
+```

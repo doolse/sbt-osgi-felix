@@ -57,7 +57,7 @@ object OsgiFelixPlugin extends AutoPlugin {
     import OsgiTasks._
 
     lazy val defaultSingleProjectSettings = repositorySettings ++ bundleSettings(ThisProject) ++
-      runnerSettings(ThisProject, ScopeFilter(inProjects(ThisProject)), true) ++ defaultOsgiSettings
+      runnerSettings(ThisProject, ScopeFilter(inProjects(ThisProject)), true)
 
     lazy val repositorySettings = Seq(
       osgiExtraJDKPackages := Seq("sun.reflect", "sun.reflect.generics.reflectiveObjects", "com.sun.jna", "com.sun", "sun.misc", "com.sun.jdi", "com.sun.jdi.connect",
@@ -75,12 +75,13 @@ object OsgiFelixPlugin extends AutoPlugin {
       },
       artifactPath in osgiRepositories := target.value,
       osgiRepositoryConfigurations := configurationFilter(Compile.name),
+      osgiRepositoryRules := Seq.empty,
       osgiRepoAdmin <<= repoAdminTaskRunner,
       osgiRepositories <<= cachedRepoLookupTask,
       osgiNamePrefix := name.value + "."
     )
 
-    def bundleSettings(repositoryProject: ProjectReference) = Seq(
+    def bundleSettings(repositoryProject: ProjectReference) = defaultOsgiSettings ++ Seq(
       osgiDependencies in Compile := Seq.empty,
       osgiDependencies in Test := Seq.empty,
       osgiRepositoryRules := Seq.empty,
@@ -96,7 +97,9 @@ object OsgiFelixPlugin extends AutoPlugin {
       managedClasspath in Compile := Seq(),
       osgiRepositories := (osgiRepositories in repositoryProject).value)
 
-    def runnerSettings(repositoryProject: ProjectReference, bundlesScope: ScopeFilter, launching: Boolean) = Seq(
+    def repositoryAndRunnerSettings(prjs: ProjectReference*) = repositorySettings ++ runnerSettings(ThisProject, ScopeFilter(inProjects(prjs: _*)))
+
+    def runnerSettings(repositoryProject: ProjectReference, bundlesScope: ScopeFilter, deploying: Boolean = true) = Seq(
       osgiRepositories in run := (osgiRepositories in Compile).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,
       osgiBundles in run := osgiDevManifest.all(bundlesScope).value,
       osgiRunDefaultLevel := 1,
@@ -106,7 +109,7 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRequiredBundles in run := (osgiBundles in run).value,
       osgiStartConfig in run <<= osgiStartConfigTask(ThisScope.in(run.key)),
       run <<= osgiRunTask
-    ) ++ (if (launching) inConfig(DeployLauncher)(Defaults.configSettings ++ Seq(
+    ) ++ (if (deploying) inConfig(DeployLauncher)(Defaults.configSettings ++ Seq(
       osgiRepositories := (osgiRepositories in Compile).value :+ osgiApplicationRepos(ThisScope in DeployLauncher).value,
       osgiDependencies := (osgiDependencies in run).value,
       osgiBundles := bundle.all(bundlesScope).value.map(BundleLocation.apply),
