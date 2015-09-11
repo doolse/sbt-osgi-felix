@@ -6,7 +6,7 @@ import aQute.bnd.version.Version
 import com.typesafe.sbt.osgi.OsgiKeys._
 import com.typesafe.sbt.osgi.OsgiManifestHeaders
 import org.apache.felix.bundlerepository.{RepositoryAdmin, Reason, Repository}
-import aQute.bnd.osgi.{Jar, Builder}
+import aQute.bnd.osgi.{Analyzer, Jar, Builder}
 import aQute.bnd.osgi.Constants._
 import java.util.Properties
 import org.osgi.framework.launch.Framework
@@ -14,6 +14,9 @@ import sbt._
 import scalaz.Id.Id
 import Keys._
 import osgifelix.OsgiFelixPlugin.autoImport._
+import osgifelix.OsgiFelixPlugin.jarCacheKey
+
+import scalaz.Memo
 
 /**
  * Created by jolz on 13/08/15.
@@ -57,16 +60,24 @@ object OsgiTasks {
     (u, insts)
   }
 
+  lazy val jarCacheTask = Def.task {
+    Memo.immutableHashMapMemo[File, Jar](new Jar(_))
+  }
+
   def bundleTask(
                   headers: OsgiManifestHeaders,
                   additionalHeaders: Map[String, String],
                   fullClasspath: Seq[Attributed[File]],
-                  artifactPath: File,
+                  classesDir: File,
                   resourceDirectories: Seq[File],
                   embeddedJars: Seq[File],
-                  streams: TaskStreams): Jar = {
-    val builder = new Builder
-    builder.setClasspath(fullClasspath map (_.data) toArray)
+                  jarCache: File => Jar,
+                  streams: TaskStreams): java.util.jar.Manifest = {
+    val builder = new Analyzer
+    builder.setJar(classesDir)
+    fullClasspath.map { jc =>
+      jarCache(jc.data)
+    }.foreach(builder.addClasspath)
     builder.setProperties(headersToProperties(headers, additionalHeaders))
     includeResourceProperty(resourceDirectories.filter(_.exists), embeddedJars) foreach (dirs =>
       builder.setProperty(INCLUDERESOURCE, dirs)
@@ -74,15 +85,7 @@ object OsgiTasks {
     bundleClasspathProperty(embeddedJars) foreach (jars =>
       builder.setProperty(BUNDLE_CLASSPATH, jars)
       )
-    // Write to a temporary file to prevent trying to simultaneously read from and write to the
-    // same jar file in exportJars mode (which causes a NullPointerException).
-    val tmpArtifactPath = file(artifactPath.absolutePath + ".tmp")
-    // builder.build is not thread-safe because it uses a static SimpleDateFormat.  This ensures
-    // that all calls to builder.build are serialized.
-    val jar = synchronized {
-      builder.build
-    }
-    jar
+    builder.calcManifest()
   }
 
   def headersToProperties(headers: OsgiManifestHeaders, additionalHeaders: Map[String, String]): Properties = {
@@ -124,12 +127,6 @@ object OsgiTasks {
 
   def parts(s: String) = s split "[.-]" filterNot (_.isEmpty)
 
-  val depsWithClasses = Def.task {
-    val cp = (dependencyClasspath in Compile).value
-    val classes = (classDirectory in Compile).value
-    cp ++ Seq(classes).classpath
-  }
-
   val devManifestTask = Def.task {
     (fullClasspath in Compile).value
     val classesDir = (classDirectory in Compile).value
@@ -138,12 +135,12 @@ object OsgiTasks {
     val manifestFile = manifestDir / "MANIFEST.MF"
     val headers = manifestHeaders.value
     val addHeaders = additionalHeaders.value
-    val cp = depsWithClasses.value
-    val jar = OsgiTasks.bundleTask(headers, addHeaders, cp, (artifactPath in(Compile, packageBin)).value,
-      (resourceDirectories in Compile).value, embeddedJars.value, streams.value)
-    Using.fileOutputStream()(manifestFile) { fo =>
-      jar.getManifest.write(fo)
-    }
+    val cp = (dependencyClasspath in Compile).value
+    val nameStr = name.value
+    streams.value.log.info("Writing manifest for "+nameStr)
+    val manifest = OsgiTasks.bundleTask(headers, addHeaders, cp, classesDir,
+      (resourceDirectories in Compile).value, embeddedJars.value, (jarCacheKey in Global).value, streams.value)
+    Using.fileOutputStream()(manifestFile) { manifest.write }
     BundleLocation(classesDir)
   }
 

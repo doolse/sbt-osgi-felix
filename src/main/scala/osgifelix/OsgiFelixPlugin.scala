@@ -1,5 +1,6 @@
 package osgifelix
 
+import aQute.bnd.osgi.Jar
 import aQute.bnd.version.Version
 import com.typesafe.sbt.osgi.SbtOsgi.defaultOsgiSettings
 import com.typesafe.sbt.osgi.OsgiKeys.bundle
@@ -12,6 +13,8 @@ import sbt._
  * Created by jolz on 13/08/15.
  */
 object OsgiFelixPlugin extends AutoPlugin {
+
+  lazy val jarCacheKey = taskKey[File => Jar]("Per run jar cache")
 
   object autoImport extends InstructionFilters {
     lazy val osgiRepositories = taskKey[Seq[Repository]]("Repositories for resolving OSGi dependencies against")
@@ -94,6 +97,7 @@ object OsgiFelixPlugin extends AutoPlugin {
       unmanagedClasspath in Test <++= osgiDependencyClasspath in Test,
       osgiRepoAdmin <<= repoAdminTaskRunner,
       osgiDevManifest <<= devManifestTask,
+      jarCacheKey in Global <<= jarCacheTask,
       managedClasspath in Compile := Seq(),
       osgiRepositories := (osgiRepositories in repositoryProject).value)
 
@@ -123,5 +127,4 @@ object OsgiFelixPlugin extends AutoPlugin {
       )
     else Seq.empty)
   }
-
 }

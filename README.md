@@ -29,7 +29,7 @@ So this is where sbt-osgi-felix comes in.
 Add the plugin in `project/plugins.sbt`
 
 ```scala
-addSbtPlugin("org.doolse" % "sbt-osgi-felix" % "1.0.0")
+addSbtPlugin("org.doolse" % "sbt-osgi-felix" % "1.0.1")
 ```
 
 `build.sbt`
