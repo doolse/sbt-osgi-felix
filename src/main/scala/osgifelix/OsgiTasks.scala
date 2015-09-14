@@ -137,10 +137,12 @@ object OsgiTasks {
     val addHeaders = additionalHeaders.value
     val cp = (dependencyClasspath in Compile).value
     val nameStr = name.value
-    streams.value.log.info("Writing manifest for "+nameStr)
+    streams.value.log.info("Writing manifest for " + nameStr)
     val manifest = OsgiTasks.bundleTask(headers, addHeaders, cp, classesDir,
       (resourceDirectories in Compile).value, embeddedJars.value, (jarCacheKey in Global).value, streams.value)
-    Using.fileOutputStream()(manifestFile) { manifest.write }
+    Using.fileOutputStream()(manifestFile) {
+      manifest.write
+    }
     BundleLocation(classesDir)
   }
 
@@ -296,6 +298,19 @@ object OsgiTasks {
     val files = (dir ***) pair(relativeTo(dir), false)
     IO.zip(files, zipFile)
     zipFile
+  }
+
+  def showStartup(scope: Scope) = Def.task[Unit] {
+    val startConfig = (osgiStartConfig in scope).value
+    val log = streams.value.log
+    startConfig.start.toSeq.sortBy(_._1).foreach {
+    case (runLevel,bundles) =>
+     val resources = osgiRepoAdmin.value { repoAdmin =>
+      repoAdmin.resourcesFromLocations(bundles.map(_.bl))
+    }
+    log.info(runLevel.toString)
+    resources.sortBy(_.getSymbolicName).map(r => s" ${r.getSymbolicName}").foreach(m => log.info(m))
+    }
   }
 
 }
