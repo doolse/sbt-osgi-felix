@@ -1,6 +1,7 @@
 package osgifelix
 
 import java.io.File
+import java.net.URI
 
 import aQute.bnd.version.Version
 import com.typesafe.sbt.osgi.OsgiKeys._
@@ -250,9 +251,7 @@ object OsgiTasks {
   def osgiApplicationRepos(bundleScope: Scope) = Def.task[Repository] {
     val runner = osgiRepoAdmin.value
     val bundles = (osgiBundles in bundleScope).value
-    runner {
-      ra => ra.createRepository(bundles)
-    }
+    runner { _.createRepository(bundles) }
   }
 
   def osgiStartConfigTask(bundleScope: Scope) = Def.task[BundleStartConfig] {
@@ -313,4 +312,24 @@ object OsgiTasks {
     }
   }
 
+  def packageObrTask(config: Configuration) = Def.task[File] {
+    val thirdParty = (osgiRepositories in config).value
+    val bundles = (osgiBundles in (config, osgiPackageOBR)).value
+    val dest = (artifactPath in (config, osgiPackageOBR)).value
+    IO.delete(dest)
+    val bundleDest = dest / "bundles"
+    val destIndex = dest / "index.xml"
+    val allJars = thirdParty.flatMap(_.getResources).map(r => new File(URI.create(r.getURI))) ++
+                  bundles.map(_.file)
+    val bls = allJars.map { jf =>
+      val destJar = bundleDest / jf.getName
+      IO.copyFile(jf, destJar)
+      BundleLocation(destJar)
+    }
+    osgiRepoAdmin.value { repoAdmin =>
+      val repo = repoAdmin.createRepository(bls)
+      repoAdmin.writeRepository(repo, dest / "index.xml")
+    }
+    destIndex
+  }
 }

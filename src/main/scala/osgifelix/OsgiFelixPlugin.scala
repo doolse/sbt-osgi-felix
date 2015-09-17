@@ -39,6 +39,8 @@ object OsgiFelixPlugin extends AutoPlugin {
 
     lazy val osgiStartConfig = taskKey[BundleStartConfig]("OSGi framework start configuration")
 
+    lazy val osgiPackageOBR = taskKey[File]("Create a self contained OBR repository")
+
     lazy val osgiDeploy = taskKey[(File, ForkOptions, Seq[String])]("Deploy an OSGi launcher to directory")
 
     lazy val osgiShow = taskKey[Unit]("Show OSGi runner config")
@@ -115,12 +117,15 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRunLevels := Map.empty,
       osgiRequiredBundles in run := (osgiBundles in run).value,
       osgiStartConfig in run <<= osgiStartConfigTask(ThisScope.in(run.key)),
-      run <<= osgiRunTask
+      run <<= osgiRunTask,
+      osgiBundles in Compile := bundle.all(bundlesScope).value.map(BundleLocation.apply),
+      artifactPath in osgiPackageOBR := target.value / "repository",
+      (osgiPackageOBR in Compile) <<= packageObrTask(Compile)
     ) ++ (if (deploying) inConfig(DeployLauncher)(Defaults.configSettings ++ Seq(
       osgiRepositories := (osgiRepositories in Compile).value :+ osgiApplicationRepos(ThisScope in DeployLauncher).value,
       osgiDependencies := (osgiDependencies in run).value,
-      osgiBundles := bundle.all(bundlesScope).value.map(BundleLocation.apply),
       osgiRequiredBundles := (osgiBundles in DeployLauncher).value,
+      osgiBundles := (osgiBundles in Compile).value,
       osgiStartConfig <<= osgiStartConfigTask(ThisScope in DeployLauncher),
       artifact in packageBin := artifact.value.copy(`type` = "zip", extension = "zip"),
       packageBin <<= packageDeploymentTask)) ++
