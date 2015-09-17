@@ -321,6 +321,8 @@ object OsgiTasks {
     val destIndex = dest / "index.xml"
     val allJars = thirdParty.flatMap(_.getResources).map(r => new File(URI.create(r.getURI))) ++
                   bundles.map(_.file)
+    val nonJars = allJars.filterNot(_.isFile)
+    if (nonJars.nonEmpty) sys.error("The following locations are not jars:\n"+nonJars.mkString("\n"))
     val bls = allJars.map { jf =>
       val destJar = bundleDest / jf.getName
       IO.copyFile(jf, destJar)
@@ -328,7 +330,7 @@ object OsgiTasks {
     }
     osgiRepoAdmin.value { repoAdmin =>
       val repo = repoAdmin.createRepository(bls)
-      repoAdmin.writeRepository(repo, dest / "index.xml")
+      repoAdmin.writeRepository(repo, destIndex)
     }
     destIndex
   }
