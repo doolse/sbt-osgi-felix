@@ -6,6 +6,7 @@ import java.util.jar.JarFile
 
 import org.apache.felix.bundlerepository.Resolver
 import org.apache.felix.bundlerepository._
+import org.apache.felix.framework.Felix
 import org.osgi.framework.{VersionRange, BundleContext}
 import org.osgi.util.tracker.ServiceTracker
 import sbt.{Resolver => _, _}
@@ -22,11 +23,27 @@ trait FelixRepoRunner {
 }
 
 object FelixRepositories {
-  def runRepoAdmin(bundles: Seq[File], storageDir: File): FelixRepoRunner = {
+  var repoFelix: Felix = _
+
+  def shutdownFelix = {
+    if (repoFelix != null) {
+      repoFelix.stop();
+      repoFelix.waitForStop(0);
+      repoFelix = null
+    }
+  }
+
+  def createRunner(bundles: Seq[File], storageDir: File): FelixRepoRunner = {
     val config = BundleStartConfig(extraSystemPackages = Seq("org.apache.felix.bundlerepository;version=2.1"), start = Map(1 -> bundles.map(ResolvedBundleLocation.apply)))
+    val felix = FelixRepositories.synchronized {
+      if (repoFelix == null) {
+        repoFelix = FelixRunner.startFramework(config, storageDir)
+      }
+      repoFelix
+    }
     new FelixRepoRunner {
       override def apply[A](f: (FelixRepositories) => A): A = FelixRepositories.synchronized {
-        FelixRunner.embed(config, storageDir)(c => f(new FelixRepositories(c)))
+        f(new FelixRepositories(felix.getBundleContext))
       }
     }
   }

@@ -62,7 +62,7 @@ object OsgiTasks {
   }
 
   lazy val jarCacheTask = Def.task {
-    Memo.immutableHashMapMemo[File, Jar](new Jar(_))
+    Memo.weakHashMapMemo[File, Jar](new Jar(_))
   }
 
   def bundleTask(
@@ -147,10 +147,10 @@ object OsgiTasks {
     BundleLocation(classesDir)
   }
 
-  lazy val repoAdminTaskRunner = Def.setting {
-    val storage = target.value / "repo-admin"
+  lazy val repoAdminTaskRunner = Def.task {
+    val storage = IO.temporaryDirectory / "felix-repo-admin"
     val file = IO.classLocationFile(classOf[RepositoryAdmin])
-    FelixRepositories.runRepoAdmin(Seq(file), storage)
+    FelixRepositories.createRunner(Seq(file), storage)
   }
 
   def writeErrors(reasons: Array[Reason], logger: Logger) = {
@@ -308,7 +308,7 @@ object OsgiTasks {
       repoAdmin.resourcesFromLocations(bundles.map(_.bl))
     }
     log.info(runLevel.toString)
-    resources.sortBy(_.getSymbolicName).map(r => s" ${r.getSymbolicName}").foreach(m => log.info(m))
+    resources.sortBy(_.getSymbolicName).map(r => s" ${r.getSymbolicName} [${r.getVersion}]").foreach(m => log.info(m))
     }
   }
 

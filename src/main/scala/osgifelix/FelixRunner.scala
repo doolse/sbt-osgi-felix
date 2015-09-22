@@ -23,7 +23,8 @@ case class BundleStartConfig(start: Map[Int, Seq[ResolvedBundleLocation]] = Map.
                              extraSystemPackages: Iterable[String] = Seq.empty, frameworkStartLevel: Int = 1)
 
 object FelixRunner {
-  def embed[A](startConfig: BundleStartConfig, storageDir: File)(f: BundleContext => A): A = {
+
+  def startFramework(startConfig: BundleStartConfig, storageDir: File): Felix = {
     val sysO = startConfig.extraSystemPackages.headOption.map(_ => startConfig.extraSystemPackages.mkString(","))
     val configMap: Map[String, String] = Seq(
       Some(Constants.FRAMEWORK_STORAGE -> storageDir.getAbsolutePath),
@@ -49,6 +50,12 @@ object FelixRunner {
     install(startConfig.install, false)
     install(startConfig.start, true)
     felix.start()
+    felix
+  }
+
+  def embed[A](startConfig: BundleStartConfig, storageDir: File)(f: BundleContext => A): A = {
+    val felix = startFramework(startConfig, storageDir)
+    val context = felix.getBundleContext
     try {
       f(context)
     }

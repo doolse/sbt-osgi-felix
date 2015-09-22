@@ -1,0 +1,7 @@
+# Version 1.0.2
+
+* New `osgiPackageOBR` task for creating a self contained OBR
+* Create a single instance of the Felix framework for calling into the bundle repository admin
+* New `osgiShow` task for showing the start configuration
+
+

@@ -8,6 +8,7 @@ import org.apache.felix.bundlerepository.Repository
 import org.osgi.framework.VersionRange
 import sbt.Keys._
 import sbt._
+import OsgiTasks._
 
 /**
  * Created by jolz on 13/08/15.
@@ -24,7 +25,7 @@ object OsgiFelixPlugin extends AutoPlugin {
     lazy val osgiRepositoryConfigurations = settingKey[ConfigurationFilter]("Ivy configurations to include in OBR repository")
     lazy val osgiRepositoryRules = settingKey[Seq[InstructionFilter]]("Filters for generating BND instructions")
     lazy val osgiRepositoryInstructions = taskKey[Seq[BundleInstructions]]("Instructions for building the bundles in the OBR repository")
-    lazy val osgiRepoAdmin = settingKey[FelixRepoRunner]("Repository admin interface")
+    lazy val osgiRepoAdmin = taskKey[FelixRepoRunner]("Repository admin interface")
     lazy val osgiExtraJDKPackages = settingKey[Seq[String]]("Extra JDK packages for framework classpath")
     lazy val osgiNamePrefix = settingKey[String]("Prefix for generated bundle names")
 
@@ -61,7 +62,6 @@ object OsgiFelixPlugin extends AutoPlugin {
 
     def fragmentsFor(name: String) = FragmentsRequirement(name)
 
-    import OsgiTasks._
 
     lazy val defaultSingleProjectSettings = repositorySettings ++ bundleSettings(ThisProject) ++
       runnerSettings(ThisProject, ScopeFilter(inProjects(ThisProject)), true)
@@ -83,10 +83,9 @@ object OsgiFelixPlugin extends AutoPlugin {
       artifactPath in osgiRepositories := target.value,
       osgiRepositoryConfigurations := configurationFilter(Compile.name),
       osgiRepositoryRules := Seq.empty,
-      osgiRepoAdmin <<= repoAdminTaskRunner,
       osgiRepositories <<= cachedRepoLookupTask,
       osgiNamePrefix := name.value + "."
-    )
+    ) ++ repoAdminTasks
 
     def bundleSettings(repositoryProject: ProjectReference) = defaultOsgiSettings ++ Seq(
       osgiDependencies in Compile := Seq.empty,
@@ -99,11 +98,10 @@ object OsgiFelixPlugin extends AutoPlugin {
           (osgiDependencyClasspath in Compile).all(ScopeFilter(inDependencies(ThisProject, true, false))).value.flatten ++ (osgiDependencyClasspath in Compile).value
       },
       unmanagedClasspath in Test <++= osgiDependencyClasspath in Test,
-      osgiRepoAdmin <<= repoAdminTaskRunner,
       osgiDevManifest <<= devManifestTask,
       jarCacheKey in Global <<= jarCacheTask,
       managedClasspath in Compile := Seq(),
-      osgiRepositories := (osgiRepositories in repositoryProject).value)
+      osgiRepositories := (osgiRepositories in repositoryProject).value) ++ repoAdminTasks
 
     def repositoryAndRunnerSettings(prjs: ProjectReference*) = repositorySettings ++ runnerSettings(ThisProject, ScopeFilter(inProjects(prjs: _*)))
 
@@ -117,10 +115,7 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRunLevels := Map.empty,
       osgiRequiredBundles in run := (osgiBundles in run).value,
       osgiStartConfig in run <<= osgiStartConfigTask(ThisScope.in(run.key)),
-      run <<= osgiRunTask,
-      osgiBundles in Compile := bundle.all(bundlesScope).value.map(BundleLocation.apply),
-      artifactPath in osgiPackageOBR := target.value / "repository",
-      (osgiPackageOBR in Compile) <<= packageObrTask(Compile)
+      run <<= osgiRunTask
     ) ++ (if (deploying) inConfig(DeployLauncher)(Defaults.configSettings ++ Seq(
       osgiRepositories := (osgiRepositories in Compile).value :+ osgiApplicationRepos(ThisScope in DeployLauncher).value,
       osgiDependencies := (osgiDependencies in run).value,
@@ -133,6 +128,24 @@ object OsgiFelixPlugin extends AutoPlugin {
         artifactPath in osgiDeploy := target.value / "launcher",
         osgiDeploy <<= osgiDeployTask
       )
-    else Seq.empty)
+    else Seq.empty) ++ packagedRepositorySettings(bundlesScope)
+
+    def packagedRepositorySettings(bundlesScope: ScopeFilter) = Seq(
+      osgiBundles in Compile := bundle.all(bundlesScope).value.map(BundleLocation.apply),
+      artifactPath in osgiPackageOBR := target.value / "repository",
+      osgiPackageOBR in Compile <<= packageObrTask(Compile)
+    ) ++ repoAdminTasks
+
   }
+
+  import autoImport._
+
+  val repoAdminTasks = Seq(
+    osgiRepoAdmin in Global <<= repoAdminTaskRunner,
+    onUnload in Global := { state =>
+      val existing = (onUnload in Global).value
+      FelixRepositories.shutdownFelix
+      existing(state)
+    }
+  )
 }
