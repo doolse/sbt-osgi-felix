@@ -3,5 +3,5 @@
 * New `osgiPackageOBR` task for creating a self contained OBR
 * Create a single instance of the Felix framework for calling into the bundle repository admin
 * New `osgiShow` task for showing the start configuration
-
+* New `osgiShowDeps` task for showing the reasons a plugin was resolved 
 

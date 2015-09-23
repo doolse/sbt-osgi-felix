@@ -6,12 +6,13 @@ import java.net.URI
 import aQute.bnd.version.Version
 import com.typesafe.sbt.osgi.OsgiKeys._
 import com.typesafe.sbt.osgi.OsgiManifestHeaders
-import org.apache.felix.bundlerepository.{RepositoryAdmin, Reason, Repository}
-import aQute.bnd.osgi.{Analyzer, Jar, Builder}
+import org.apache.felix.bundlerepository.{Resource, RepositoryAdmin, Reason, Repository}
+import aQute.bnd.osgi.{Analyzer, Jar}
 import aQute.bnd.osgi.Constants._
 import java.util.Properties
 import org.osgi.framework.launch.Framework
 import sbt._
+import sbt.complete.DefaultParsers.spaceDelimited
 import scalaz.Id.Id
 import Keys._
 import osgifelix.OsgiFelixPlugin.autoImport._
@@ -303,13 +304,46 @@ object OsgiTasks {
     val startConfig = (osgiStartConfig in scope).value
     val log = streams.value.log
     startConfig.start.toSeq.sortBy(_._1).foreach {
-    case (runLevel,bundles) =>
-     val resources = osgiRepoAdmin.value { repoAdmin =>
-      repoAdmin.resourcesFromLocations(bundles.map(_.bl))
+      case (runLevel,bundles) =>
+        val resources = bundles collect { case ResolvedBundleLocation(_, _, Some((r, _))) => r }
+        log.info(runLevel.toString)
+        resources.sortBy(_.getSymbolicName).map(r => s" ${r.getSymbolicName} [${r.getVersion}]").foreach(m => log.info(m))
     }
-    log.info(runLevel.toString)
-    resources.sortBy(_.getSymbolicName).map(r => s" ${r.getSymbolicName} [${r.getVersion}]").foreach(m => log.info(m))
+  }
+
+  def showDependencies(scope: Scope) = Def.inputTask[Unit] {
+    val pluginNames = spaceDelimited("<bundle names>").parsed
+    val log = streams.value.log
+    val startConfig = (osgiStartConfig in scope).value
+    val bundleMap = startConfig.start.values.flatMap {
+      bundles => bundles.collect {
+        case bl@ResolvedBundleLocation(_, _, Some((res, reasons))) => (res.getSymbolicName, bl)
+      }
+    }.toMap
+
+    def showDeps(bundles: Seq[ResolvedBundleLocation], seen: Set[String], level: Int):Unit = {
+      val nextNames = bundles.flatMap {
+        case ResolvedBundleLocation(_,_, Some((res, reasons))) => reasons.map(_.getResource.getSymbolicName)
+      }.toSet diff seen
+      val nextDeps = nextNames.collect {
+        case bsn if bundleMap.contains(bsn) => bundleMap(bsn)
+      }
+      bundles.foreach {
+        case ResolvedBundleLocation(_, _, Some((res, reasons))) =>
+          val spaces = (0 until level).map(_ => ' ').mkString
+          val bsn = res.getSymbolicName
+          log.info(s"${spaces}${bsn}")
+          reasons.foreach { r =>
+            val req = r.getRequirement
+            val depBsn = r.getResource.getSymbolicName
+            if (bsn != depBsn)
+            log.info(s"${spaces}- ${req.getFilter} for $depBsn")
+          }
+      }
+      if (nextDeps.nonEmpty) showDeps(nextDeps.toSeq, seen ++ nextNames, level+1)
     }
+    val topLevel = bundleMap.filterKeys(pluginNames.toSet).values.toSeq
+    showDeps(topLevel, pluginNames.toSet, 0)
   }
 
   def packageObrTask(config: Configuration) = Def.task[File] {

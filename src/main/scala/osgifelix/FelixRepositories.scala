@@ -132,7 +132,7 @@ class FelixRepositories(bundleContext: BundleContext) {
     val success = resolver.resolve(Resolver.NO_OPTIONAL_RESOURCES)
     if (success) {
       val systemBundle = ResolvedBundleLocation(IO.classLocationFile[BundleContext])
-      (resolver.getRequiredResources.map(ResolvedBundleLocation.apply).toSeq ++ Seq(systemBundle)).right
+      (resolver.getRequiredResources.map(r => ResolvedBundleLocation(resolver, r)).toSeq ++ Seq(systemBundle)).right
     } else resolver.getUnsatisfiedRequirements.left
   }
 
@@ -147,7 +147,7 @@ class FelixRepositories(bundleContext: BundleContext) {
     val success = resolver.resolve(Resolver.NO_OPTIONAL_RESOURCES)
     if (success) {
       val runMap = (resolver.getRequiredResources ++ resolver.getAddedResources).map { r =>
-        val bl = ResolvedBundleLocation(r)
+        val bl = ResolvedBundleLocation(resolver, r)
         val runLevel = if (bl.fragment) defaultStartLevel else bundleLevelMap.get(r.getSymbolicName).getOrElse(defaultStartLevel)
         (runLevel, bl)
       }.groupBy(_._1).mapValues(_.map(_._2).toSeq)

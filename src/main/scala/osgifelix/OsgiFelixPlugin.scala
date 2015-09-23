@@ -45,6 +45,7 @@ object OsgiFelixPlugin extends AutoPlugin {
     lazy val osgiDeploy = taskKey[(File, ForkOptions, Seq[String])]("Deploy an OSGi launcher to directory")
 
     lazy val osgiShow = taskKey[Unit]("Show OSGi runner config")
+    lazy val osgiShowDeps = inputKey[Unit]("Show resolved dependencies for runner")
 
     lazy val DeployLauncher = config("deployLauncher")
 
@@ -107,6 +108,7 @@ object OsgiFelixPlugin extends AutoPlugin {
 
     def runnerSettings(repositoryProject: ProjectReference, bundlesScope: ScopeFilter, deploying: Boolean = true) = Seq(
       osgiShow <<= showStartup(ThisScope.in(run.key)),
+      osgiShowDeps <<= showDependencies(ThisScope.in(run.key)),
       osgiRepositories in run := (osgiRepositories in Compile).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,
       osgiBundles in run := osgiDevManifest.all(bundlesScope).value,
       osgiRunDefaultLevel := 1,
