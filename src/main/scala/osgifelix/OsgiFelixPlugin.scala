@@ -84,7 +84,7 @@ object OsgiFelixPlugin extends AutoPlugin {
       artifactPath in osgiRepositories := target.value,
       osgiRepositoryConfigurations := configurationFilter(Compile.name),
       osgiRepositoryRules := Seq.empty,
-      osgiRepositories <<= cachedRepoLookupTask,
+      osgiRepositories in Compile <<= cachedRepoLookupTask,
       osgiNamePrefix := name.value + "."
     ) ++ repoAdminTasks
 
@@ -102,14 +102,14 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiDevManifest <<= devManifestTask,
       jarCacheKey in Global <<= jarCacheTask,
       managedClasspath in Compile := Seq(),
-      osgiRepositories := (osgiRepositories in repositoryProject).value) ++ repoAdminTasks
+      osgiRepositories in Compile := (osgiRepositories in (repositoryProject, Compile)).value) ++ repoAdminTasks
 
     def repositoryAndRunnerSettings(prjs: ProjectReference*) = repositorySettings ++ runnerSettings(ThisProject, ScopeFilter(inProjects(prjs: _*)))
 
     def runnerSettings(repositoryProject: ProjectReference, bundlesScope: ScopeFilter, deploying: Boolean = true) = Seq(
       osgiShow <<= showStartup(ThisScope.in(run.key)),
       osgiShowDeps <<= showDependencies(ThisScope.in(run.key)),
-      osgiRepositories in run := (osgiRepositories in Compile).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,
+      osgiRepositories in run := (osgiRepositories in (repositoryProject, Compile)).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,
       osgiBundles in run := osgiDevManifest.all(bundlesScope).value,
       osgiRunDefaultLevel := 1,
       osgiRunFrameworkLevel := 1,
@@ -117,9 +117,10 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRunLevels := Map.empty,
       osgiRequiredBundles in run := (osgiBundles in run).value,
       osgiStartConfig in run <<= osgiStartConfigTask(ThisScope.in(run.key)),
+      osgiBundles in Compile := bundle.all(bundlesScope).value.map(BundleLocation.apply),
       run <<= osgiRunTask
     ) ++ (if (deploying) inConfig(DeployLauncher)(Defaults.configSettings ++ Seq(
-      osgiRepositories := (osgiRepositories in Compile).value :+ osgiApplicationRepos(ThisScope in DeployLauncher).value,
+      osgiRepositories := (osgiRepositories in (repositoryProject, Compile)).value :+ osgiApplicationRepos(ThisScope in DeployLauncher).value,
       osgiDependencies := (osgiDependencies in run).value,
       osgiRequiredBundles := (osgiBundles in DeployLauncher).value,
       osgiBundles := (osgiBundles in Compile).value,
@@ -130,10 +131,9 @@ object OsgiFelixPlugin extends AutoPlugin {
         artifactPath in osgiDeploy := target.value / "launcher",
         osgiDeploy <<= osgiDeployTask
       )
-    else Seq.empty) ++ packagedRepositorySettings(bundlesScope)
+    else Seq.empty)
 
     def packagedRepositorySettings(bundlesScope: ScopeFilter) = Seq(
-      osgiBundles in Compile := bundle.all(bundlesScope).value.map(BundleLocation.apply),
       artifactPath in osgiPackageOBR := target.value / "repository",
       osgiPackageOBR in Compile <<= packageObrTask(Compile)
     ) ++ repoAdminTasks
