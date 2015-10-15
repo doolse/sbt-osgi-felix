@@ -94,11 +94,8 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRepositoryRules := Seq.empty,
       osgiDependencyClasspath in Compile <<= osgiDependencyClasspathTask(Compile),
       osgiDependencyClasspath in Test <<= osgiDependencyClasspathTask(Test),
-      unmanagedClasspath in Compile ++= {
-        scalaInstance.value.allJars().toSeq.classpath ++
-          (osgiDependencyClasspath in Compile).all(ScopeFilter(inDependencies(ThisProject, true, false))).value.flatten ++ (osgiDependencyClasspath in Compile).value
-      },
-      unmanagedClasspath in Test <++= osgiDependencyClasspath in Test,
+      unmanagedClasspath in Test ++= ((unmanagedClasspath in Compile).value ++ (osgiDependencyClasspath in Test).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten).distinct,
+      unmanagedClasspath in Compile ++= scalaInstance.value.allJars().toSeq.classpath ++ (osgiDependencyClasspath in Compile).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten.distinct,
       osgiDevManifest <<= devManifestTask,
       jarCacheKey in Global <<= jarCacheTask,
       managedClasspath in Compile := Seq(),

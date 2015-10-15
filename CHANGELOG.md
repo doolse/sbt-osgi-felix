@@ -5,3 +5,6 @@
 * New `osgiShow` task for showing the start configuration
 * New `osgiShowDeps` task for showing the reasons a plugin was resolved 
 
+# Version 1.0.3
+
+* Ensure osgi dependencies of sbt dependant projects are included on Test classpath 
