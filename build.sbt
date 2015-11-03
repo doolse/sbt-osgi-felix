@@ -6,7 +6,7 @@ name := "sbt-osgi-felix"
 
 description := "SBT plugin for working with OSGi bundles using Apache Felix"
 
-version := "1.0.4"
+version := "1.0.4-SNAPSHOT"
 
 scalaVersion := "2.10.4"
 
@@ -29,4 +29,3 @@ repository in bintray := "sbt-plugins"
 bintrayOrganization in bintray := None
 
 licenses += "Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0.html")
-
