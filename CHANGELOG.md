@@ -7,4 +7,5 @@
 
 # Version 1.0.3
 
-* Ensure osgi dependencies of sbt dependant projects are included on Test classpath 
+* Fix: Ensure osgi dependencies of sbt dependant projects are included on Test classpath 
+* Fix: Include osgi dependencies on Runtime classpath
