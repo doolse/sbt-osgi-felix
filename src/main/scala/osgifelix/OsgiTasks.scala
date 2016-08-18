@@ -221,13 +221,17 @@ object OsgiTasks {
       if (configFilter(cr.configuration)) cr.modules else Nil
     })
     val typeFilter: NameFilter = "jar" | "bundle"
-    val artifacts = ordered.flatMap { mr =>
+    val _artifacts = ordered.flatMap { mr =>
       mr.artifacts.collectFirst {
         case (artifact, file) if typeFilter.accept(artifact.`type`) => (mr.module, artifact, file)
       }
     }
     val rules = osgiRepositoryRules.value
     val pfx = osgiNamePrefix.value
+    val uj = (unmanagedJars in Compile).value.seq.map(_.data)
+    val artifacts = uj.map { f =>
+      ("unmanaged" % f.getName % "1.0", Artifact(f.getName, "jar", "jar"), f)
+    } ++ _artifacts
     val (unused, insts) = OsgiTasks.convertToInstructions(pfx, artifacts, rules)
     if (unused.nonEmpty) {
       val logger = streams.value.log
