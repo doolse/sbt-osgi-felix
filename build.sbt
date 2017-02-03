@@ -6,11 +6,11 @@ name := "sbt-osgi-felix"
 
 description := "SBT plugin for working with OSGi bundles using Apache Felix"
 
-version := "1.0.4-PHILIP"
+version := "1.0.5-PHILIP"
 
 scalaVersion := "2.10.4"
 
-libraryDependencies ++= Seq("biz.aQute.bnd" % "bndlib" % "2.4.0",
+libraryDependencies ++= Seq("biz.aQute.bnd" % "biz.aQute.bndlib" % "3.3.0",
   "org.apache.felix" % "org.apache.felix.bundlerepository" % "2.0.4",
   "org.apache.felix" % "org.apache.felix.main" % "5.0.0" intransitive(),
   "io.argonaut" %% "argonaut" % "6.1",
