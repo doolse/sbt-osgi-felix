@@ -19,7 +19,7 @@ libraryDependencies ++= Seq("biz.aQute.bnd" % "biz.aQute.bndlib" % "3.3.0",
 
 sbtPlugin := true
 
-addSbtPlugin("com.typesafe.sbt" % "sbt-osgi" % "0.7.0")
+addSbtPlugin("com.typesafe.sbt" % "sbt-osgi" % "0.9.1")
 
 bintrayPublishSettings
 
