@@ -18,6 +18,7 @@ object OsgiFelixPlugin extends AutoPlugin {
   lazy val jarCacheKey = taskKey[File => Jar]("Per run jar cache")
 
   object autoImport extends InstructionFilters {
+    lazy val philip = taskKey[Unit]("PHILIP")
     lazy val osgiRepositories = taskKey[Seq[Repository]]("Repositories for resolving OSGi dependencies against")
     lazy val osgiDependencies = settingKey[Seq[OsgiRequirement]]("OSGi package or bundle dependencies")
     lazy val osgiDependencyClasspath = taskKey[Classpath]("Classpath from OSGi dependencies")
@@ -105,6 +106,7 @@ object OsgiFelixPlugin extends AutoPlugin {
     def repositoryAndRunnerSettings(prjs: ProjectReference*) = repositorySettings ++ runnerSettings(ThisProject, ScopeFilter(inProjects(prjs: _*)))
 
     def runnerSettings(repositoryProject: ProjectReference, bundlesScope: ScopeFilter, deploying: Boolean = true) = Seq(
+      philip <<= philipAction(ThisScope.in(run.key)),
       osgiShow <<= showStartup(ThisScope.in(run.key)),
       osgiShowDeps <<= showDependencies(ThisScope.in(run.key)),
       osgiRepositories in run := (osgiRepositories in (repositoryProject, Compile)).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,

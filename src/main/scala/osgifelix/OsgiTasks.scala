@@ -304,6 +304,10 @@ object OsgiTasks {
     zipFile
   }
 
+  def philipAction(scope: Scope) = Def.task[Unit] {
+    println("PHILIP TASK")
+  }
+
   def showStartup(scope: Scope) = Def.task[Unit] {
     val startConfig = (osgiStartConfig in scope).value
     val log = streams.value.log
