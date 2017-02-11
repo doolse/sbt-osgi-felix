@@ -6,15 +6,18 @@ import java.net.URI
 import aQute.bnd.version.Version
 import com.typesafe.sbt.osgi.OsgiKeys._
 import com.typesafe.sbt.osgi.OsgiManifestHeaders
-import org.apache.felix.bundlerepository.{Resource, RepositoryAdmin, Reason, Repository}
+import org.apache.felix.bundlerepository.{Reason, Repository, RepositoryAdmin, Resource}
 import aQute.bnd.osgi.{Analyzer, Jar}
 import aQute.bnd.osgi.Constants._
 import java.util.Properties
+
 import org.osgi.framework.launch.Framework
 import sbt._
 import sbt.complete.DefaultParsers.spaceDelimited
+
 import scalaz.Id.Id
 import Keys._
+import net.virtualvoid.sbt.graph.{DependencyGraphKeys, DependencyGraphSettings, ModuleGraph}
 import osgifelix.OsgiFelixPlugin.autoImport._
 import osgifelix.OsgiFelixPlugin.jarCacheKey
 
@@ -304,8 +307,9 @@ object OsgiTasks {
     zipFile
   }
 
-  def philipAction(scope: Scope) = Def.task[Unit] {
-    println("PHILIP TASK")
+  def philipAction(scope: Scope, moduleGraph: ModuleGraph) = Def.task[Unit] {
+    println(moduleGraph)
+    println("...")
   }
 
   def showStartup(scope: Scope) = Def.task[Unit] {

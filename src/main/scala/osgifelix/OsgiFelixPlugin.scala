@@ -9,6 +9,7 @@ import org.osgi.framework.VersionRange
 import sbt.Keys._
 import sbt._
 import OsgiTasks._
+import net.virtualvoid.sbt.graph.{DependencyGraphKeys, DependencyGraphSettings}
 
 /**
  * Created by jolz on 13/08/15.
@@ -19,6 +20,7 @@ object OsgiFelixPlugin extends AutoPlugin {
 
   object autoImport extends InstructionFilters {
     lazy val philip = taskKey[Unit]("PHILIP")
+
     lazy val osgiRepositories = taskKey[Seq[Repository]]("Repositories for resolving OSGi dependencies against")
     lazy val osgiDependencies = settingKey[Seq[OsgiRequirement]]("OSGi package or bundle dependencies")
     lazy val osgiDependencyClasspath = taskKey[Classpath]("Classpath from OSGi dependencies")
@@ -65,7 +67,7 @@ object OsgiFelixPlugin extends AutoPlugin {
     def fragmentsFor(name: String) = FragmentsRequirement(name)
 
 
-    lazy val defaultSingleProjectSettings = repositorySettings ++ bundleSettings(ThisProject) ++
+    lazy val defaultSingleProjectSettings = DependencyGraphSettings.graphSettings ++ repositorySettings ++ bundleSettings(ThisProject) ++
       runnerSettings(ThisProject, ScopeFilter(inProjects(ThisProject)), true)
 
     lazy val repositorySettings = Seq(
@@ -90,6 +92,7 @@ object OsgiFelixPlugin extends AutoPlugin {
     ) ++ repoAdminTasks
 
     def bundleSettings(repositoryProject: ProjectReference) = defaultOsgiSettings ++ Seq(
+      //philip <<= (DependencyGraphKeys.moduleGraph) map { (m) => { } },
       osgiDependencies in Compile := Seq.empty,
       osgiDependencies in Test := Seq.empty,
       osgiRepositoryRules := Seq.empty,
@@ -106,7 +109,6 @@ object OsgiFelixPlugin extends AutoPlugin {
     def repositoryAndRunnerSettings(prjs: ProjectReference*) = repositorySettings ++ runnerSettings(ThisProject, ScopeFilter(inProjects(prjs: _*)))
 
     def runnerSettings(repositoryProject: ProjectReference, bundlesScope: ScopeFilter, deploying: Boolean = true) = Seq(
-      philip <<= philipAction(ThisScope.in(run.key)),
       osgiShow <<= showStartup(ThisScope.in(run.key)),
       osgiShowDeps <<= showDependencies(ThisScope.in(run.key)),
       osgiRepositories in run := (osgiRepositories in (repositoryProject, Compile)).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,
