@@ -17,7 +17,6 @@ import sbt.complete.DefaultParsers.spaceDelimited
 
 import scalaz.Id.Id
 import Keys._
-import net.virtualvoid.sbt.graph.{DependencyGraphKeys, DependencyGraphSettings, ModuleGraph}
 import osgifelix.OsgiFelixPlugin.autoImport._
 import osgifelix.OsgiFelixPlugin.jarCacheKey
 
@@ -307,8 +306,7 @@ object OsgiTasks {
     zipFile
   }
 
-  def philipAction(scope: Scope, moduleGraph: ModuleGraph) = Def.task[Unit] {
-    println(moduleGraph)
+  def philipAction(scope: Scope) = Def.task[Unit] {
     println("...")
   }
 

@@ -9,7 +9,6 @@ import org.osgi.framework.VersionRange
 import sbt.Keys._
 import sbt._
 import OsgiTasks._
-import net.virtualvoid.sbt.graph.{DependencyGraphKeys, DependencyGraphSettings}
 
 /**
  * Created by jolz on 13/08/15.
@@ -67,7 +66,7 @@ object OsgiFelixPlugin extends AutoPlugin {
     def fragmentsFor(name: String) = FragmentsRequirement(name)
 
 
-    lazy val defaultSingleProjectSettings = DependencyGraphSettings.graphSettings ++ repositorySettings ++ bundleSettings(ThisProject) ++
+    lazy val defaultSingleProjectSettings = repositorySettings ++ bundleSettings(ThisProject) ++
       runnerSettings(ThisProject, ScopeFilter(inProjects(ThisProject)), true)
 
     lazy val repositorySettings = Seq(
