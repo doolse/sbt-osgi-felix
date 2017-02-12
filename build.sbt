@@ -2,7 +2,7 @@ import bintray.Keys._
 
 organization := "org.doolse"
 
-name := "sbt-osgi-felix"
+name := "sbt-osgi-felix-p"
 
 description := "SBT plugin for working with OSGi bundles using Apache Felix"
 
