@@ -1,6 +1,5 @@
-import bintray.Keys._
 
-organization := "org.philip368320"
+organization := "org.philandrew"
 
 name := "sbt-osgi-felix-p"
 
@@ -21,12 +20,24 @@ sbtPlugin := true
 
 addSbtPlugin("com.typesafe.sbt" % "sbt-osgi" % "0.9.1")
 
-bintrayPublishSettings
+bintrayPackage := "sbt-osgi-felix-p"
+
+bintrayRepository := "sbt-osgi-felix-p"
+
+bintrayOrganization := Some("philandrew")
+
+publishMavenStyle := true
+
+//bintrayPublishSettings
 
 publishMavenStyle := false
 
-repository in bintray := "sbt-plugins"
+//repository in bintray := "sbt-plugins"
 
-bintrayOrganization in bintray := None
+//bintrayOrganization in bintray := None
 
-licenses += "Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0.html")
+//licenses += "Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0.html")
+licenses += ("MIT", url("http://opensource.org/licenses/MIT"))
+
+bintrayReleaseOnPublish in ThisBuild := false
+
