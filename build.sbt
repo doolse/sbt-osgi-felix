@@ -5,7 +5,7 @@ name := "sbt-osgi-felix-p"
 
 description := "SBT plugin for working with OSGi bundles using Apache Felix"
 
-version := "1.0.12"
+version := "1.0.13"
 
 scalaVersion := "2.10.4"
 
@@ -14,30 +14,22 @@ libraryDependencies ++= Seq("biz.aQute.bnd" % "biz.aQute.bndlib" % "3.3.0",
   "org.apache.felix" % "org.apache.felix.bundlerepository" % "2.0.4",
   "org.apache.felix" % "org.apache.felix.main" % "5.0.0" intransitive(),
   "io.argonaut" %% "argonaut" % "6.1",
-  "org.scalaz" %% "scalaz-core" % "7.1.1")
+  "org.scalaz" %% "scalaz-core" % "7.2.9")
 
 sbtPlugin := true
 
 addSbtPlugin("com.typesafe.sbt" % "sbt-osgi" % "0.9.1")
 
-bintrayPackage := "sbt-osgi-felix-p"
+//bintrayPackage := "sbt-osgi-felix-p"
 
-bintrayRepository := "sbt-osgi-felix-p"
+//bintrayRepository := "sbt-osgi-felix-p"
 
-bintrayOrganization := Some("philandrew")
+//bintrayOrganization := Some("philandrew")
 
-publishMavenStyle := true
+//publishMavenStyle := true
 
-//bintrayPublishSettings
-
-publishMavenStyle := false
-
-//repository in bintray := "sbt-plugins"
-
-//bintrayOrganization in bintray := None
-
-//licenses += "Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0.html")
 licenses += ("MIT", url("http://opensource.org/licenses/MIT"))
 
-bintrayReleaseOnPublish in ThisBuild := false
+//bintrayReleaseOnPublish in ThisBuild := true // true or false, it still published
 
+//bintrayReleaseOnPublish in ThisBuild := false
