@@ -5,7 +5,7 @@ name := "sbt-osgi-felix-p"
 
 description := "SBT plugin for working with OSGi bundles using Apache Felix"
 
-version := "1.0.14"
+version := "1.0.15"
 
 scalaVersion := "2.10.6"
 
