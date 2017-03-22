@@ -32,7 +32,7 @@ object FelixRunner {
       sysO.map(Constants.FRAMEWORK_SYSTEMPACKAGES_EXTRA -> _),
       Some(Constants.FRAMEWORK_BEGINNING_STARTLEVEL -> startConfig.frameworkStartLevel.toString)
     ).flatten.toMap
-    val felix = new Felix(configMap.asJava)
+    val felix = new Felix(collection.mutable.Map(configMap.toSeq: _*).asJava)
     felix.init
     val fsl = felix.adapt(classOf[FrameworkStartLevel])
     fsl.setInitialBundleStartLevel(startConfig.frameworkStartLevel)
