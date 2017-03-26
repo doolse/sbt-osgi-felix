@@ -5,7 +5,7 @@ name := "sbt-osgi-felix-p"
 
 description := "SBT plugin for working with OSGi bundles using Apache Felix"
 
-version := "1.0.15"
+version := "1.0.16"
 
 scalaVersion := "2.10.6"
 
@@ -16,9 +16,9 @@ libraryDependencies ++= Seq("biz.aQute.bnd" % "biz.aQute.bndlib" % "3.3.0",
   "io.argonaut" %% "argonaut" % "6.2-RC2",
   "org.scalaz" %% "scalaz-core" % "7.2.8")
 
-lazy val sbtOsgiPlugin = uri("https://github.com/philip368320/sbt-osgi.git#49d72598b49e73042d36bff536eb50d406df5a43")
+//lazy val sbtOsgiPlugin = uri("https://github.com/philip368320/sbt-osgi.git#49d72598b49e73042d36bff536eb50d406df5a43")
 
-lazy val root = project.in(file(".")).dependsOn(sbtOsgiPlugin)
+//lazy val root = project.in(file(".")).dependsOn(sbtOsgiPlugin)
 
 sbtPlugin := true
 
