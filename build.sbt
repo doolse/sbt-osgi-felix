@@ -1,32 +1,39 @@
-import bintray.Keys._
 
-organization := "org.doolse"
+organization := "org.philandrew"
 
-name := "sbt-osgi-felix"
+name := "sbt-osgi-felix-p"
 
 description := "SBT plugin for working with OSGi bundles using Apache Felix"
 
-version := "1.0.4"
+version := "1.0.17"
 
-scalaVersion := "2.10.4"
+scalaVersion := "2.10.6"
 
-libraryDependencies ++= Seq("biz.aQute.bnd" % "bndlib" % "2.4.0",
+libraryDependencies ++= Seq("biz.aQute.bnd" % "biz.aQute.bndlib" % "3.3.0",
+  "org.slf4j" % "slf4j-api" % "1.7.22",
   "org.apache.felix" % "org.apache.felix.bundlerepository" % "2.0.4",
   "org.apache.felix" % "org.apache.felix.main" % "5.0.0" intransitive(),
-  "io.argonaut" %% "argonaut" % "6.1",
-  "org.scalaz" %% "scalaz-core" % "7.1.1")
+  "io.argonaut" %% "argonaut" % "6.2-RC2",
+  "org.scalaz" %% "scalaz-core" % "7.2.8")
+
+//lazy val sbtOsgiPlugin = uri("https://github.com/philip368320/sbt-osgi.git#49d72598b49e73042d36bff536eb50d406df5a43")
+
+//lazy val root = project.in(file(".")).dependsOn(sbtOsgiPlugin)
 
 sbtPlugin := true
 
-addSbtPlugin("com.typesafe.sbt" % "sbt-osgi" % "0.7.0")
+//addSbtPlugin("com.typesafe.sbt" % "sbt-osgi" % "0.9.1")
 
-bintrayPublishSettings
+//bintrayPackage := "sbt-osgi-felix-p"
 
-publishMavenStyle := false
+//bintrayRepository := "sbt-osgi-felix-p"
 
-repository in bintray := "sbt-plugins"
+//bintrayOrganization := Some("philandrew")
 
-bintrayOrganization in bintray := None
+//publishMavenStyle := true
 
-licenses += "Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0.html")
+licenses += ("MIT", url("http://opensource.org/licenses/MIT"))
 
+//bintrayReleaseOnPublish in ThisBuild := true // true or false, it still published
+
+//bintrayReleaseOnPublish in ThisBuild := false

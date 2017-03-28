@@ -9,8 +9,8 @@ import java.util.{Date, Properties, TimeZone}
 import aQute.bnd.osgi.{Analyzer, Builder, Jar}
 import aQute.bnd.version.Version
 import argonaut._
-import argonaut.Argonaut._
 import sbt._
+import argonaut.Argonaut._
 
 import scala.collection.convert.WrapAsJava._
 import scalaz.Kleisli.kleisli
@@ -32,7 +32,14 @@ object BndManifestGenerator {
   }
   implicit val instEncode = EncodeJson.derive[ManifestInstructions]
   implicit val rewriteEncode = EncodeJson.derive[RewriteManifest]
-  implicit val createEncode = EncodeJson.derive[CreateBundle]
+
+  implicit val ddda = EncodeJson[Seq[sbt.ModuleID]] {
+    (a: Seq[sbt.ModuleID]) => a.toList.asJson(ListEncodeJson(modIdEncode))
+  }
+  implicit val dddb = EncodeJson[Iterable[java.io.File]] {
+    (a: Iterable[java.io.File]) => a.toList.asJson(ListEncodeJson(fileEncode))
+  }
+  implicit val createEncode = EncodeJson.derive[CreateBundle] // @fix error
   implicit val copyEncode = EncodeJson.derive[UseBundle]
   implicit val manifestEncode = EncodeJson.derive[ManifestOnly]
   implicit val bundleEncode = EncodeJson[BundleInstructions] {
@@ -43,6 +50,9 @@ object BndManifestGenerator {
   }
 
   def serialize(instructions: Seq[BundleInstructions]): String = {
+    implicit val ddd = EncodeJson[Seq[BundleInstructions]] {
+      (a: Seq[BundleInstructions]) => a.toList.asJson(ListEncodeJson(bundleEncode))  // @todo fix
+    }
     instructions.asJson.nospaces
   }
 

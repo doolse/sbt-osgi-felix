@@ -27,11 +27,12 @@ object FelixRunner {
   def startFramework(startConfig: BundleStartConfig, storageDir: File): Felix = {
     val sysO = startConfig.extraSystemPackages.headOption.map(_ => startConfig.extraSystemPackages.mkString(","))
     val configMap: Map[String, String] = Seq(
+      Some(Constants.FRAMEWORK_BOOTDELEGATION -> "sun.misc"),
       Some(Constants.FRAMEWORK_STORAGE -> storageDir.getAbsolutePath),
       sysO.map(Constants.FRAMEWORK_SYSTEMPACKAGES_EXTRA -> _),
       Some(Constants.FRAMEWORK_BEGINNING_STARTLEVEL -> startConfig.frameworkStartLevel.toString)
     ).flatten.toMap
-    val felix = new Felix(configMap.asJava)
+    val felix = new Felix(collection.mutable.Map(configMap.toSeq: _*).asJava)
     felix.init
     val fsl = felix.adapt(classOf[FrameworkStartLevel])
     fsl.setInitialBundleStartLevel(startConfig.frameworkStartLevel)

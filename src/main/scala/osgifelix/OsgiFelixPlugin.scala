@@ -18,6 +18,8 @@ object OsgiFelixPlugin extends AutoPlugin {
   lazy val jarCacheKey = taskKey[File => Jar]("Per run jar cache")
 
   object autoImport extends InstructionFilters {
+    lazy val philip = taskKey[Unit]("PHILIP")
+
     lazy val osgiRepositories = taskKey[Seq[Repository]]("Repositories for resolving OSGi dependencies against")
     lazy val osgiDependencies = settingKey[Seq[OsgiRequirement]]("OSGi package or bundle dependencies")
     lazy val osgiDependencyClasspath = taskKey[Classpath]("Classpath from OSGi dependencies")
@@ -89,6 +91,7 @@ object OsgiFelixPlugin extends AutoPlugin {
     ) ++ repoAdminTasks
 
     def bundleSettings(repositoryProject: ProjectReference) = defaultOsgiSettings ++ Seq(
+      //philip <<= (DependencyGraphKeys.moduleGraph) map { (m) => { } },
       osgiDependencies in Compile := Seq.empty,
       osgiDependencies in Test := Seq.empty,
       osgiRepositoryRules := Seq.empty,

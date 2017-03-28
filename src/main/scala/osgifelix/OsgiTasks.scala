@@ -6,13 +6,15 @@ import java.net.URI
 import aQute.bnd.version.Version
 import com.typesafe.sbt.osgi.OsgiKeys._
 import com.typesafe.sbt.osgi.OsgiManifestHeaders
-import org.apache.felix.bundlerepository.{Resource, RepositoryAdmin, Reason, Repository}
+import org.apache.felix.bundlerepository.{Reason, Repository, RepositoryAdmin, Resource}
 import aQute.bnd.osgi.{Analyzer, Jar}
 import aQute.bnd.osgi.Constants._
 import java.util.Properties
+
 import org.osgi.framework.launch.Framework
 import sbt._
 import sbt.complete.DefaultParsers.spaceDelimited
+
 import scalaz.Id.Id
 import Keys._
 import osgifelix.OsgiFelixPlugin.autoImport._
@@ -302,6 +304,10 @@ object OsgiTasks {
     val files = (dir ***) pair(relativeTo(dir), false)
     IO.zip(files, zipFile)
     zipFile
+  }
+
+  def philipAction(scope: Scope) = Def.task[Unit] {
+    println("...")
   }
 
   def showStartup(scope: Scope) = Def.task[Unit] {
