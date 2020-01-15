@@ -2,6 +2,7 @@ package osgifelix
 
 import aQute.bnd.version.Version
 import sbt._
+import sbt.librarymanagement.DependencyFilter
 
 /**
  * Created by jolz on 13/08/15.

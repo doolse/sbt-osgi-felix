@@ -9,6 +9,7 @@ import org.osgi.framework.VersionRange
 import sbt.Keys._
 import sbt._
 import OsgiTasks._
+import sbt.librarymanagement.ConfigurationFilter
 
 /**
  * Created by jolz on 13/08/15.
@@ -84,7 +85,7 @@ object OsgiFelixPlugin extends AutoPlugin {
       artifactPath in osgiRepositories := target.value,
       osgiRepositoryConfigurations := configurationFilter(Compile.name),
       osgiRepositoryRules := Seq.empty,
-      osgiRepositories in Compile <<= cachedRepoLookupTask,
+      osgiRepositories in Compile := cachedRepoLookupTask.value,
       osgiNamePrefix := name.value + "."
     ) ++ repoAdminTasks
 
@@ -92,21 +93,21 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiDependencies in Compile := Seq.empty,
       osgiDependencies in Test := Seq.empty,
       osgiRepositoryRules := Seq.empty,
-      osgiDependencyClasspath in Compile <<= osgiDependencyClasspathTask(Compile),
-      osgiDependencyClasspath in Test <<= osgiDependencyClasspathTask(Test),
+      osgiDependencyClasspath in Compile := osgiDependencyClasspathTask(Compile).value,
+      osgiDependencyClasspath in Test := osgiDependencyClasspathTask(Test).value,
       unmanagedClasspath in Test ++= ((unmanagedClasspath in Compile).value ++ (osgiDependencyClasspath in Test).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten).distinct,
       unmanagedClasspath in Runtime ++= (unmanagedClasspath in Compile).value,
-      unmanagedClasspath in Compile ++= scalaInstance.value.allJars().toSeq.classpath ++ (osgiDependencyClasspath in Compile).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten.distinct,
-      osgiDevManifest <<= devManifestTask,
-      jarCacheKey in Global <<= jarCacheTask,
+      unmanagedClasspath in Compile ++= scalaInstance.value.allJars.toSeq.classpath ++ (osgiDependencyClasspath in Compile).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten.distinct,
+      osgiDevManifest := devManifestTask.value,
+      jarCacheKey in Global := jarCacheTask.value,
       managedClasspath in Compile := Seq(),
       osgiRepositories in Compile := (osgiRepositories in (repositoryProject, Compile)).value) ++ repoAdminTasks
 
     def repositoryAndRunnerSettings(prjs: ProjectReference*) = repositorySettings ++ runnerSettings(ThisProject, ScopeFilter(inProjects(prjs: _*)))
 
     def runnerSettings(repositoryProject: ProjectReference, bundlesScope: ScopeFilter, deploying: Boolean = true) = Seq(
-      osgiShow <<= showStartup(ThisScope.in(run.key)),
-      osgiShowDeps <<= showDependencies(ThisScope.in(run.key)),
+      osgiShow := showStartup(ThisScope.in(run.key)).value,
+      osgiShowDeps := showDependencies(ThisScope.in(run.key)).evaluated,
       osgiRepositories in run := (osgiRepositories in (repositoryProject, Compile)).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,
       osgiBundles in run := osgiDevManifest.all(bundlesScope).value,
       osgiRunDefaultLevel := 1,
@@ -114,26 +115,26 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiDependencies in run := Seq.empty,
       osgiRunLevels := Map.empty,
       osgiRequiredBundles in run := (osgiBundles in run).value,
-      osgiStartConfig in run <<= osgiStartConfigTask(ThisScope.in(run.key)),
+      osgiStartConfig in run := osgiStartConfigTask(ThisScope.in(run.key)).value,
       osgiBundles in Compile := bundle.all(bundlesScope).value.map(BundleLocation.apply),
-      run <<= osgiRunTask
+      run := osgiRunTask.evaluated
     ) ++ (if (deploying) inConfig(DeployLauncher)(Defaults.configSettings ++ Seq(
       osgiRepositories := (osgiRepositories in (repositoryProject, Compile)).value :+ osgiApplicationRepos(ThisScope in DeployLauncher).value,
       osgiDependencies := (osgiDependencies in run).value,
       osgiRequiredBundles := (osgiBundles in DeployLauncher).value,
       osgiBundles := (osgiBundles in Compile).value,
-      osgiStartConfig <<= osgiStartConfigTask(ThisScope in DeployLauncher),
-      artifact in packageBin := artifact.value.copy(`type` = "zip", extension = "zip"),
-      packageBin <<= packageDeploymentTask)) ++
+      osgiStartConfig := osgiStartConfigTask(ThisScope in DeployLauncher).value,
+      artifact in packageBin := artifact.value.withType("zip").withExtension("zip"),
+      packageBin := packageDeploymentTask.value)) ++
       Seq(
         artifactPath in osgiDeploy := target.value / "launcher",
-        osgiDeploy <<= osgiDeployTask
+        osgiDeploy := osgiDeployTask.value
       )
     else Seq.empty)
 
     def packagedRepositorySettings(bundlesScope: ScopeFilter) = Seq(
       artifactPath in osgiPackageOBR := target.value / "repository",
-      osgiPackageOBR in Compile <<= packageObrTask(Compile)
+      osgiPackageOBR in Compile := packageObrTask(Compile).value
     ) ++ repoAdminTasks
 
   }
@@ -141,7 +142,7 @@ object OsgiFelixPlugin extends AutoPlugin {
   import autoImport._
 
   val repoAdminTasks = Seq(
-    osgiRepoAdmin in Global <<= repoAdminTaskRunner,
+    osgiRepoAdmin in Global := repoAdminTaskRunner.value,
     onUnload in Global := { state =>
       val existing = (onUnload in Global).value
       FelixRepositories.shutdownFelix
