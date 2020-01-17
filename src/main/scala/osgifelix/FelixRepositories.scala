@@ -1,7 +1,6 @@
 package osgifelix
 
 import java.io.{FileReader, FileWriter, File}
-import java.net.{URL, URI}
 import java.util.jar.JarFile
 
 import org.apache.felix.bundlerepository.Resolver
@@ -9,6 +8,7 @@ import org.apache.felix.bundlerepository._
 import org.apache.felix.framework.Felix
 import org.osgi.framework.{VersionRange, BundleContext}
 import org.osgi.util.tracker.ServiceTracker
+import sbt.io.Using
 import sbt.{Resolver => _, _}
 
 import scalaz.\/

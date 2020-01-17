@@ -81,7 +81,7 @@ object FelixRunner {
 
   def forker(startConfig: BundleStartConfig): (ForkOptions, Seq[String]) = {
     val (allStarts, allInstalls) = (startConfig.start, startConfig.install)
-    val defaults = Seq(Constants.FRAMEWORK_BEGINNING_STARTLEVEL -> startConfig.frameworkStartLevel)
+    val defaults = Vector(Constants.FRAMEWORK_BEGINNING_STARTLEVEL -> startConfig.frameworkStartLevel)
 
     val installs = doInstall(allInstalls)
     val starts = doStart(allStarts)
@@ -90,7 +90,7 @@ object FelixRunner {
       case (n, v) => s"-D$n=$v"
     }
     val startJar = IO.classLocationFile(classOf[AutoProcessor])
-    (ForkOptions(runJVMOptions = jvmArgs ++ Seq("-jar", startJar.getAbsolutePath)), Seq(IO.createTemporaryDirectory.getAbsolutePath))
+    (ForkOptions().withRunJVMOptions(jvmArgs ++ Seq("-jar", startJar.getAbsolutePath)), Seq(IO.createTemporaryDirectory.getAbsolutePath))
   }
 
 
@@ -131,6 +131,6 @@ object FelixRunner {
     val startJar = IO.classLocationFile(classOf[AutoProcessor])
     val outStartJar = dir / "lib" / startJar.getName
     IO.copyFile(startJar, outStartJar)
-    (ForkOptions(workingDirectory = Some(dir), runJVMOptions = Seq("-jar", outStartJar.getAbsolutePath)), Seq.empty)
+    (ForkOptions().withWorkingDirectory(Some(dir)).withRunJVMOptions(Vector("-jar", outStartJar.getAbsolutePath)), Seq.empty)
   }
 }

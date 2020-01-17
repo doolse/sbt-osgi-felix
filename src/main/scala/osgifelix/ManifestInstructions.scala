@@ -16,7 +16,7 @@ case class ManifestInstructions(imports: String = "*", exports: String = "*;vers
 sealed trait BundleInstructions
 
 case class RewriteManifest(moduleId: Option[ModuleID], jar: Jar, symbolicName: String, version: Version, instructions: ManifestInstructions)  extends BundleInstructions
-case class CreateBundle(moduleIds: Seq[ModuleID], jars: Iterable[File], symbolicName: String, version: Version, instructions: ManifestInstructions)  extends BundleInstructions
+case class CreateBundle(moduleIds: List[ModuleID], jars: List[File], symbolicName: String, version: Version, instructions: ManifestInstructions)  extends BundleInstructions
 case class UseBundle(moduleId: Option[ModuleID], jf: File, jar: Jar) extends BundleInstructions
 case class ManifestOnly(moduleId: Option[ModuleID], symbolicName: String, version: Version, headers: Map[String, String]) extends BundleInstructions
 

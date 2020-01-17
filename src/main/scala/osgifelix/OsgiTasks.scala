@@ -17,7 +17,7 @@ import scalaz.Id.Id
 import Keys._
 import osgifelix.OsgiFelixPlugin.autoImport._
 import osgifelix.OsgiFelixPlugin.jarCacheKey
-
+import sbt.io.Using
 import scalaz.Memo
 
 /**
@@ -35,7 +35,7 @@ object OsgiTasks {
     val unusedFilters = filters.toSet
     val (u, _, insts) = configReport.foldLeft((unusedFilters, filters, Seq.empty[BundleInstructions])) {
       case ((unused, filters, instructions), (mid, art, file)) =>
-        val matchedFilters = filters.filter(_.filter("", mid, art))
+        val matchedFilters = filters.filter(_.filter(ConfigRef(""), mid, art))
         val (newInsts, nextFilters) = if (matchedFilters.isEmpty) {
           (Seq(autoDetect(mid, file)), filters)
         } else {
@@ -47,10 +47,10 @@ object OsgiTasks {
               (Seq(RewriteManifest(Some(mid), jar, name, version, instructions)), None)
             case f@CreateFilter(_, filter, name, version, instructions, processDefault) =>
               val allFiles = configReport.collect {
-                case (mid, art, file) if filter("", mid, art) => (file, IgnoreFilter("generated", filter = moduleFilter(organization = mid.organization, name = mid.name, revision = mid.revision)))
+                case (mid, art, file) if filter(ConfigRef(""), mid, art) => (file, IgnoreFilter("generated", filter = moduleFilter(organization = mid.organization, name = mid.name, revision = mid.revision)))
               }
               val optionalDefault = if (processDefault) Seq(autoDetect(mid, file)) else Nil
-              (optionalDefault :+ CreateBundle(Seq(mid), allFiles.map(_._1), name, version, instructions), Some(f, allFiles.map(_._2)))
+              (optionalDefault :+ CreateBundle(List(mid), allFiles.toList.map(_._1), name, version, instructions), Some(f, allFiles.map(_._2)))
           }
           (changes.flatMap(_._1), changes.foldLeft(filters) {
             case (newFilters, (_, Some((matched, replacements)))) => newFilters.filter(_ != matched) ++ replacements
@@ -233,8 +233,8 @@ object OsgiTasks {
       ("unmanaged" % f.getName % "1.0", Artifact(f.getName, "jar", "jar"), f)
     } ++ _artifacts
     val (unused, insts) = OsgiTasks.convertToInstructions(pfx, artifacts, rules)
+    val logger = streams.value.log
     if (unused.nonEmpty) {
-      val logger = streams.value.log
       unused.foreach { r =>
         logger.warn(s"OSGi repository rule '${r}' is not used")
       }
@@ -245,10 +245,11 @@ object OsgiTasks {
   def osgiDependencyClasspathTask(config: ConfigKey) = Def.task[Classpath] {
     val repos = (osgiRepositories in config).value
     val deps = (osgiDependencies in config).value
+    val logger = streams.value.log
     osgiRepoAdmin.value { repoAdmin =>
       repoAdmin.resolveRequirements(repos, deps)
     }.map(_.map(_.bl.file).classpath) valueOr { reasons =>
-      writeErrors(reasons, streams.value.log)
+      writeErrors(reasons, logger)
       sys.error("Error looking up dependencies")
     }
   }
@@ -263,11 +264,12 @@ object OsgiTasks {
     val reqBundles = (osgiRequiredBundles in bundleScope).value
     val runner = osgiRepoAdmin.value
     val repos = (osgiRepositories in bundleScope).value
+    val logger = streams.value.log
     runner { ra =>
       val requirements = (osgiDependencies in bundleScope).value
 
       val startConfig = ra.resolveStartConfig(repos, reqBundles, requirements, osgiRunLevels.value, osgiRunDefaultLevel.value).valueOr { e =>
-        writeErrors(e, streams.value.log)
+        writeErrors(e, logger)
         sys.error("Failed to lookup start config")
       }
       startConfig.copy(frameworkStartLevel = osgiRunFrameworkLevel.value)
@@ -299,7 +301,7 @@ object OsgiTasks {
   lazy val packageDeploymentTask = Def.task[File] {
     val zipFile = (artifactPath in (DeployLauncher, packageBin)).value
     val (dir, _, _) = osgiDeploy.value
-    val files = (dir ***) pair(relativeTo(dir), false)
+    val files = (dir.allPaths) pair(Path.relativeTo(dir), false)
     IO.zip(files, zipFile)
     zipFile
   }

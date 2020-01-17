@@ -43,7 +43,7 @@ object BndManifestGenerator {
   }
 
   def serialize(instructions: Seq[BundleInstructions]): String = {
-    instructions.asJson.nospaces
+    instructions.toList.asJson.nospaces
   }
 
   def genQualifier = {
