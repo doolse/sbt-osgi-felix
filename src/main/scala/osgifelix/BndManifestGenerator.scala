@@ -12,7 +12,7 @@ import argonaut._
 import argonaut.Argonaut._
 import sbt._
 
-import scala.collection.convert.WrapAsJava._
+import scala.collection.JavaConverters._
 import scalaz.Kleisli.kleisli
 import scalaz.{Monad, ReaderT}
 import scalaz.syntax.monad._
@@ -89,7 +89,7 @@ object BndManifestGenerator {
       analyzer.setBundleVersion(version)
       if (insts.extraProperties.nonEmpty) {
         val props = new Properties()
-        props.putAll(insts.extraProperties)
+        props.putAll(insts.extraProperties.asJava)
         analyzer.setProperties(props)
       }
     }
