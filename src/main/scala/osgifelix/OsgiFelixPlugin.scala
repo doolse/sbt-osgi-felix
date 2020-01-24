@@ -82,59 +82,59 @@ object OsgiFelixPlugin extends AutoPlugin {
         } else Seq()
         extBundle ++ createInstructionsTask.value
       },
-      artifactPath in osgiRepositories := target.value,
+      osgiRepositories / artifactPath := target.value,
       osgiRepositoryConfigurations := configurationFilter(Compile.name),
       osgiRepositoryRules := Seq.empty,
-      osgiRepositories in Compile := cachedRepoLookupTask.value,
+      Compile / osgiRepositories := cachedRepoLookupTask.value,
       osgiNamePrefix := name.value + "."
     ) ++ repoAdminTasks
 
     def bundleSettings(repositoryProject: ProjectReference) = defaultOsgiSettings ++ Seq(
-      osgiDependencies in Compile := Seq.empty,
-      osgiDependencies in Test := Seq.empty,
+      Compile / osgiDependencies := Seq.empty,
+      Test / osgiDependencies := Seq.empty,
       osgiRepositoryRules := Seq.empty,
-      osgiDependencyClasspath in Compile := osgiDependencyClasspathTask(Compile).value,
-      osgiDependencyClasspath in Test := osgiDependencyClasspathTask(Test).value,
-      unmanagedClasspath in Test ++= ((unmanagedClasspath in Compile).value ++ (osgiDependencyClasspath in Test).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten).distinct,
-      unmanagedClasspath in Runtime ++= (unmanagedClasspath in Compile).value,
-      unmanagedClasspath in Compile ++= scalaInstance.value.allJars.toSeq.classpath ++ (osgiDependencyClasspath in Compile).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten.distinct,
+      Compile / osgiDependencyClasspath := osgiDependencyClasspathTask(Compile).value,
+      Test / osgiDependencyClasspath := osgiDependencyClasspathTask(Test).value,
+      Test / unmanagedClasspath ++= ((unmanagedClasspath in Compile).value ++ (osgiDependencyClasspath in Test).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten).distinct,
+      Runtime / unmanagedClasspath ++= (unmanagedClasspath in Compile).value,
+      Compile / unmanagedClasspath ++= scalaInstance.value.allJars.toSeq.classpath ++ (osgiDependencyClasspath in Compile).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten.distinct,
       osgiDevManifest := devManifestTask.value,
-      jarCacheKey in Global := jarCacheTask.value,
-      managedClasspath in Compile := Seq(),
-      osgiRepositories in Compile := (osgiRepositories in (repositoryProject, Compile)).value) ++ repoAdminTasks
+      Global / jarCacheKey := jarCacheTask.value,
+      Compile / managedClasspath := Seq(),
+      Compile / osgiRepositories := (repositoryProject / Compile / osgiRepositories).value) ++ repoAdminTasks
 
     def repositoryAndRunnerSettings(prjs: ProjectReference*) = repositorySettings ++ runnerSettings(ThisProject, ScopeFilter(inProjects(prjs: _*)))
 
     def runnerSettings(repositoryProject: ProjectReference, bundlesScope: ScopeFilter, deploying: Boolean = true) = Seq(
       osgiShow := showStartup(ThisScope.in(run.key)).value,
       osgiShowDeps := showDependencies(ThisScope.in(run.key)).evaluated,
-      osgiRepositories in run := (osgiRepositories in (repositoryProject, Compile)).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,
-      osgiBundles in run := osgiDevManifest.all(bundlesScope).value,
+      run / osgiRepositories := (osgiRepositories in (repositoryProject, Compile)).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,
+      run / osgiBundles := osgiDevManifest.all(bundlesScope).value,
       osgiRunDefaultLevel := 1,
       osgiRunFrameworkLevel := 1,
-      osgiDependencies in run := Seq.empty,
+      run / osgiDependencies := Seq.empty,
       osgiRunLevels := Map.empty,
-      osgiRequiredBundles in run := (osgiBundles in run).value,
-      osgiStartConfig in run := osgiStartConfigTask(ThisScope.in(run.key)).value,
-      osgiBundles in Compile := bundle.all(bundlesScope).value.map(BundleLocation.apply),
+      run / osgiRequiredBundles := (osgiBundles in run).value,
+      run / osgiStartConfig := osgiStartConfigTask(ThisScope.in(run.key)).value,
+      Compile / osgiBundles := bundle.all(bundlesScope).value.map(BundleLocation.apply),
       run := osgiRunTask.evaluated
     ) ++ (if (deploying) inConfig(DeployLauncher)(Defaults.configSettings ++ Seq(
-      osgiRepositories := (osgiRepositories in (repositoryProject, Compile)).value :+ osgiApplicationRepos(ThisScope in DeployLauncher).value,
-      osgiDependencies := (osgiDependencies in run).value,
-      osgiRequiredBundles := (osgiBundles in DeployLauncher).value,
-      osgiBundles := (osgiBundles in Compile).value,
+      osgiRepositories := (repositoryProject / Compile / osgiRepositories).value :+ osgiApplicationRepos(ThisScope in DeployLauncher).value,
+      osgiDependencies := (run / osgiDependencies).value,
+      osgiRequiredBundles := (DeployLauncher / osgiBundles ).value,
+      osgiBundles := (Compile / osgiBundles).value,
       osgiStartConfig := osgiStartConfigTask(ThisScope in DeployLauncher).value,
       artifact in packageBin := artifact.value.withType("zip").withExtension("zip"),
       packageBin := packageDeploymentTask.value)) ++
       Seq(
-        artifactPath in osgiDeploy := target.value / "launcher",
+        osgiDeploy / artifactPath := target.value / "launcher",
         osgiDeploy := osgiDeployTask.value
       )
     else Seq.empty)
 
     def packagedRepositorySettings(bundlesScope: ScopeFilter) = Seq(
-      artifactPath in osgiPackageOBR := target.value / "repository",
-      osgiPackageOBR in Compile := packageObrTask(Compile).value
+      osgiPackageOBR / artifactPath := target.value / "repository",
+      Compile / osgiPackageOBR := packageObrTask(Compile).value
     ) ++ repoAdminTasks
 
   }
@@ -142,9 +142,9 @@ object OsgiFelixPlugin extends AutoPlugin {
   import autoImport._
 
   val repoAdminTasks = Seq(
-    osgiRepoAdmin in Global := repoAdminTaskRunner.value,
-    onUnload in Global := { state =>
-      val existing = (onUnload in Global).value
+    Global / osgiRepoAdmin := repoAdminTaskRunner.value,
+    Global / onUnload := { state =>
+      val existing = (Global / onUnload).value
       FelixRepositories.shutdownFelix
       existing(state)
     }

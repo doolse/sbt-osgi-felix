@@ -27,8 +27,8 @@ object FelixRepositories {
 
   def shutdownFelix = {
     if (repoFelix != null) {
-      repoFelix.stop();
-      repoFelix.waitForStop(0);
+      repoFelix.stop()
+      repoFelix.waitForStop(0)
       repoFelix = null
     }
   }
