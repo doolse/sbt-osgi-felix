@@ -95,7 +95,7 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRepositoryRules := Seq.empty,
       Compile / osgiDependencyClasspath := osgiDependencyClasspathTask(Compile).value,
       Test / osgiDependencyClasspath := osgiDependencyClasspathTask(Test).value,
-      Test / unmanagedClasspath ++= ((Compile / unmanagedClasspath).value ++ (osgiDependencyClasspath in Test).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten).distinct,
+      Test / unmanagedClasspath ++= ((Compile / unmanagedClasspath).value ++ (Test / osgiDependencyClasspath).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten).distinct,
       Runtime / unmanagedClasspath ++= (Compile / unmanagedClasspath).value,
       Compile / unmanagedClasspath ++= scalaInstance.value.allJars.toSeq.classpath ++ (Compile / osgiDependencyClasspath).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten.distinct,
       osgiDevManifest := devManifestTask.value,
@@ -108,7 +108,7 @@ object OsgiFelixPlugin extends AutoPlugin {
     def runnerSettings(repositoryProject: ProjectReference, bundlesScope: ScopeFilter, deploying: Boolean = true) = Seq(
       osgiShow := showStartup(ThisScope.in(run.key)).value,
       osgiShowDeps := showDependencies(ThisScope.in(run.key)).evaluated,
-      run / osgiRepositories := (osgiRepositories in (repositoryProject, Compile)).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,
+      run / osgiRepositories := (repositoryProject / Compile / osgiRepositories).value :+ osgiApplicationRepos(ThisScope.in(run.key)).value,
       run / osgiBundles := osgiDevManifest.all(bundlesScope).value,
       osgiRunDefaultLevel := 1,
       osgiRunFrameworkLevel := 1,
