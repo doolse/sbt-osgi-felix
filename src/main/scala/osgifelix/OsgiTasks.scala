@@ -130,18 +130,18 @@ object OsgiTasks {
   def parts(s: String) = s split "[.-]" filterNot (_.isEmpty)
 
   val devManifestTask = Def.task {
-    (fullClasspath in Compile).value
-    val classesDir = (classDirectory in Compile).value
+    (Compile / fullClasspath).value
+    val classesDir = (Compile / classDirectory).value
     val manifestDir = classesDir / "META-INF"
     IO.createDirectory(manifestDir)
     val manifestFile = manifestDir / "MANIFEST.MF"
     val headers = manifestHeaders.value
     val addHeaders = additionalHeaders.value
-    val cp = (dependencyClasspath in Compile).value
+    val cp = (Compile / dependencyClasspath).value
     val nameStr = name.value
     streams.value.log.info("Writing manifest for " + nameStr)
     val manifest = OsgiTasks.bundleTask(headers, addHeaders, cp, classesDir,
-      (resourceDirectories in Compile).value, embeddedJars.value, (jarCacheKey in Global).value, streams.value)
+      (Compile / resourceDirectories).value, embeddedJars.value, (Global / jarCacheKey).value, streams.value)
     Using.fileOutputStream()(manifestFile) {
       manifest.write
     }
@@ -165,7 +165,7 @@ object OsgiTasks {
 
   lazy val cachedRepoLookupTask = Def.taskDyn[Seq[Repository]] {
     val instructions = osgiRepositoryInstructions.value
-    val obrDir = (artifactPath in osgiRepositories).value
+    val obrDir = (osgiRepositories / artifactPath).value
     val cacheFile = obrDir / "bundle.cache"
     val binDir = obrDir / "bundles"
     val indexFile = obrDir / "index.xml"
@@ -228,7 +228,7 @@ object OsgiTasks {
     }
     val rules = osgiRepositoryRules.value
     val pfx = osgiNamePrefix.value
-    val uj = (unmanagedJars in Compile).value.seq.map(_.data)
+    val uj = (Compile / unmanagedJars).value.seq.map(_.data)
     val artifacts = uj.map { f =>
       ("unmanaged" % f.getName % "1.0", Artifact(f.getName, "jar", "jar"), f)
     } ++ _artifacts
@@ -243,8 +243,8 @@ object OsgiTasks {
   }
 
   def osgiDependencyClasspathTask(config: ConfigKey) = Def.task[Classpath] {
-    val repos = (osgiRepositories in config).value
-    val deps = (osgiDependencies in config).value
+    val repos = (config / osgiRepositories).value
+    val deps = (config / osgiDependencies).value
     val logger = streams.value.log
     osgiRepoAdmin.value { repoAdmin =>
       repoAdmin.resolveRequirements(repos, deps)
@@ -256,17 +256,17 @@ object OsgiTasks {
 
   def osgiApplicationRepos(bundleScope: Scope) = Def.task[Repository] {
     val runner = osgiRepoAdmin.value
-    val bundles = (osgiBundles in bundleScope).value
+    val bundles = (bundleScope / osgiBundles).value
     runner { _.createRepository(bundles) }
   }
 
   def osgiStartConfigTask(bundleScope: Scope) = Def.task[BundleStartConfig] {
-    val reqBundles = (osgiRequiredBundles in bundleScope).value
+    val reqBundles = (bundleScope / osgiRequiredBundles).value
     val runner = osgiRepoAdmin.value
-    val repos = (osgiRepositories in bundleScope).value
+    val repos = (bundleScope / osgiRepositories).value
     val logger = streams.value.log
     runner { ra =>
-      val requirements = (osgiDependencies in bundleScope).value
+      val requirements = (bundleScope / osgiDependencies).value
 
       val startConfig = ra.resolveStartConfig(repos, reqBundles, requirements, osgiRunLevels.value, osgiRunDefaultLevel.value).valueOr { e =>
         writeErrors(e, logger)
@@ -277,9 +277,9 @@ object OsgiTasks {
   }
 
   lazy val osgiRunTask = Def.inputTask[Unit] {
-      val log = (streams in run).value.log
-      val startConfig = (osgiStartConfig in run).value
-      val props = (envVars in run).value
+      val log = (run / streams).value.log
+      val startConfig = (run / osgiStartConfig).value
+      val props = (run / envVars).value
       props.foreach {
         case (n, v) => System.setProperty(n, v)
       }
@@ -292,14 +292,14 @@ object OsgiTasks {
   }
 
   lazy val osgiDeployTask = Def.task[(File, ForkOptions, Seq[String])] {
-    val config = (osgiStartConfig in DeployLauncher).value
-    val dir = (artifactPath in osgiDeploy).value
+    val config = (DeployLauncher / osgiStartConfig).value
+    val dir = (osgiDeploy / artifactPath).value
     val (ops, cmdLine) = FelixRunner.writeLauncher(config, dir)
     (dir, ops, cmdLine)
   }
 
   lazy val packageDeploymentTask = Def.task[File] {
-    val zipFile = (artifactPath in (DeployLauncher, packageBin)).value
+    val zipFile = (DeployLauncher / packageBin / artifactPath).value
     val (dir, _, _) = osgiDeploy.value
     val files = (dir.allPaths) pair(Path.relativeTo(dir), false)
     IO.zip(files, zipFile)
@@ -307,7 +307,7 @@ object OsgiTasks {
   }
 
   def showStartup(scope: Scope) = Def.task[Unit] {
-    val startConfig = (osgiStartConfig in scope).value
+    val startConfig = (scope / osgiStartConfig).value
     val log = streams.value.log
     startConfig.start.toSeq.sortBy(_._1).foreach {
       case (runLevel,bundles) =>
@@ -320,7 +320,7 @@ object OsgiTasks {
   def showDependencies(scope: Scope) = Def.inputTask[Unit] {
     val pluginNames = spaceDelimited("<bundle names>").parsed
     val log = streams.value.log
-    val startConfig = (osgiStartConfig in scope).value
+    val startConfig = (scope / osgiStartConfig).value
     val bundleMap = startConfig.start.values.flatMap {
       bundles => bundles.collect {
         case bl@ResolvedBundleLocation(_, _, Some((res, reasons))) => (res.getSymbolicName, bl)
@@ -353,9 +353,9 @@ object OsgiTasks {
   }
 
   def packageObrTask(config: Configuration) = Def.task[File] {
-    val thirdParty = (osgiRepositories in config).value
-    val bundles = (osgiBundles in (config, osgiPackageOBR)).value
-    val dest = (artifactPath in (config, osgiPackageOBR)).value
+    val thirdParty = (config / osgiRepositories).value
+    val bundles = (config / osgiPackageOBR/ osgiBundles).value
+    val dest = (config / osgiPackageOBR / artifactPath).value
     IO.delete(dest)
     val bundleDest = dest / "bundles"
     val destIndex = dest / "index.xml"

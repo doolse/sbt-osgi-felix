@@ -95,9 +95,9 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRepositoryRules := Seq.empty,
       Compile / osgiDependencyClasspath := osgiDependencyClasspathTask(Compile).value,
       Test / osgiDependencyClasspath := osgiDependencyClasspathTask(Test).value,
-      Test / unmanagedClasspath ++= ((unmanagedClasspath in Compile).value ++ (osgiDependencyClasspath in Test).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten).distinct,
-      Runtime / unmanagedClasspath ++= (unmanagedClasspath in Compile).value,
-      Compile / unmanagedClasspath ++= scalaInstance.value.allJars.toSeq.classpath ++ (osgiDependencyClasspath in Compile).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten.distinct,
+      Test / unmanagedClasspath ++= ((Compile / unmanagedClasspath).value ++ (osgiDependencyClasspath in Test).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten).distinct,
+      Runtime / unmanagedClasspath ++= (Compile / unmanagedClasspath).value,
+      Compile / unmanagedClasspath ++= scalaInstance.value.allJars.toSeq.classpath ++ (Compile / osgiDependencyClasspath).all(ScopeFilter(inDependencies(ThisProject, true, true))).value.flatten.distinct,
       osgiDevManifest := devManifestTask.value,
       Global / jarCacheKey := jarCacheTask.value,
       Compile / managedClasspath := Seq(),
@@ -114,7 +114,7 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRunFrameworkLevel := 1,
       run / osgiDependencies := Seq.empty,
       osgiRunLevels := Map.empty,
-      run / osgiRequiredBundles := (osgiBundles in run).value,
+      run / osgiRequiredBundles := (run / osgiBundles).value,
       run / osgiStartConfig := osgiStartConfigTask(ThisScope.in(run.key)).value,
       Compile / osgiBundles := bundle.all(bundlesScope).value.map(BundleLocation.apply),
       run := osgiRunTask.evaluated
@@ -124,7 +124,7 @@ object OsgiFelixPlugin extends AutoPlugin {
       osgiRequiredBundles := (DeployLauncher / osgiBundles ).value,
       osgiBundles := (Compile / osgiBundles).value,
       osgiStartConfig := osgiStartConfigTask(ThisScope in DeployLauncher).value,
-      artifact in packageBin := artifact.value.withType("zip").withExtension("zip"),
+      packageBin / artifact := artifact.value.withType("zip").withExtension("zip"),
       packageBin := packageDeploymentTask.value)) ++
       Seq(
         osgiDeploy / artifactPath := target.value / "launcher",
