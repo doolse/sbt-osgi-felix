@@ -21,9 +21,9 @@ BintrayPlugin.bintrayPublishSettings
 
 publishMavenStyle := false
 
-bintrayRepository in bintray := "sbt-plugins"
+bintray / bintrayRepository := "sbt-plugins"
 
-bintrayOrganization in bintray := None
+bintray / bintrayOrganization := None
 
 licenses += "Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0.html")
 
